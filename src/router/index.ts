@@ -1,9 +1,5 @@
 import type { App } from "vue";
-import {
-  createRouter,
-  createWebHashHistory,
-  type RouteRecordRaw,
-} from "vue-router";
+import { createRouter, createWebHashHistory, type RouteRecordRaw } from "vue-router";
 
 export const Layout = () => import("@/layout/index.vue");
 
@@ -26,12 +22,76 @@ export const constantRoutes: RouteRecordRaw[] = [
     component: () => import("@/views/login/index.vue"),
     meta: { hidden: true },
   },
-
+  {
+    path: "/apigc",
+    component: Layout,
+    redirect: "/apigc/login",
+    children: [
+      {
+        path: "login",
+        name: "ptLogin",
+        component: () => import("@/views/aipgc/index.vue"),
+        meta: {
+          title: "AIP/GC",
+          icon: "el-icon-smoking",
+        },
+      },
+      {
+        path: "search",
+        name: "AipSearch",
+        component: () => import("@/views/aipgc/components/AipSearch.vue"),
+        meta: {
+          hidden: true,
+        },
+      },
+      {
+        path: "info/:code",
+        name: "aipInfo",
+        component: () => import("@/views/aipgc/components/AipInfo.vue"),
+        props: true,
+        meta: {
+          hidden: true,
+        },
+      },
+    ],
+  },
+  {
+    path: "/recorder",
+    component: Layout,
+    redirect: "/recorder/open",
+    children: [
+      {
+        path: "open",
+        component: () => import("@/views/recorder/index.vue"),
+        meta: {
+          title: "Recorder",
+          icon: "el-icon-edit",
+          keepAlive: true,
+        },
+      },
+    ],
+  },
+  {
+    path: "/log",
+    component: Layout,
+    redirect: "/log/open",
+    children: [
+      {
+        path: "open",
+        component: () => import("@/views/log/index.vue"),
+        meta: {
+          title: "Log",
+          icon: "el-icon-document",
+          keepAlive: true,
+        },
+      },
+    ],
+  },
   {
     path: "/",
     name: "/",
     component: Layout,
-    redirect: "/dashboard",
+    redirect: "/apigc/login",
     children: [
       {
         path: "dashboard",
@@ -65,8 +125,7 @@ export const constantRoutes: RouteRecordRaw[] = [
       {
         path: "myNotice",
         name: "MyNotice",
-        component: () =>
-          import("@/views/system/notice/components/MyNotice.vue"),
+        component: () => import("@/views/system/notice/components/MyNotice.vue"),
         meta: { title: "我的通知", icon: "user", hidden: true },
       },
     ],

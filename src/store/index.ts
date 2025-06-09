@@ -14,4 +14,6 @@ export * from "./modules/settings";
 export * from "./modules/tags-view";
 export * from "./modules/user";
 export * from "./modules/dict";
+export * from "./modules/aip";
+export * from "./modules/plugin";
 export { store };
