@@ -84,28 +84,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Footer Section -->
-      <div class="footer-section">
-        <div class="feature-highlights">
-          <div class="feature-item">
-            <el-icon size="24" color="#409eff"><TrendCharts /></el-icon>
-            <span>实时监控</span>
-          </div>
-          <div class="feature-item">
-            <el-icon size="24" color="#67C23A"><Shield /></el-icon>
-            <span>安全可靠</span>
-          </div>
-          <div class="feature-item">
-            <el-icon size="24" color="#E6A23C"><Lightning /></el-icon>
-            <span>高效处理</span>
-          </div>
-          <div class="feature-item">
-            <el-icon size="24" color="#F56C6C"><Star /></el-icon>
-            <span>智能分析</span>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -119,7 +97,6 @@ import {
   Document,
   ArrowRight,
   TrendCharts,
-  Shield,
   Lightning,
   Star,
 } from "@element-plus/icons-vue";

@@ -7,7 +7,6 @@ export const Layout = () => import("@/layout/index.vue");
 export const constantRoutes: RouteRecordRaw[] = [
   {
     path: "/redirect",
-    component: Layout,
     meta: { hidden: true },
     children: [
       {
@@ -18,7 +17,6 @@ export const constantRoutes: RouteRecordRaw[] = [
   },
   {
     path: "/aipgc",
-    component: Layout,
     redirect: "/aipgc/login",
     children: [
       {
@@ -51,7 +49,6 @@ export const constantRoutes: RouteRecordRaw[] = [
   },
   {
     path: "/recorder",
-    component: Layout,
     redirect: "/recorder/open",
     children: [
       {
@@ -67,7 +64,6 @@ export const constantRoutes: RouteRecordRaw[] = [
   },
   {
     path: "/log",
-    component: Layout,
     redirect: "/log/open",
     children: [
       {
