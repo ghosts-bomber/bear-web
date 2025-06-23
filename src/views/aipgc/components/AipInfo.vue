@@ -33,9 +33,16 @@
         :data="aipDataInfo.logFiles"
         stripe
         style="width: 100%"
+        :row-class-name="getRowClassName"
         @row-dblclick="logDbClickedHandle"
       >
-        <el-table-column property="name" label="文件名" width="240" show-overflow-tooltip />
+        <el-table-column label="文件名" min-width="200" show-overflow-tooltip>
+          <template #default="scope">
+            <span>
+              {{ scope.row.name }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column property="filesize" label="大小" width="120" />
       </el-table>
 
@@ -403,6 +410,100 @@ const stopResize = () => {
   document.removeEventListener("mousemove", handleMouseMove);
   document.removeEventListener("mouseup", stopResize);
 };
+
+// 从文件名中提取时间段
+const extractTimeRangeFromFileName = (
+  fileName: string
+): { startTime: Date | null; endTime: Date | null } => {
+  // 匹配文件名中的时间格式：YYYYMMDD-HHMMSS_YYYYMMDD-HHMMSS
+  const timePattern = /(\d{8})-(\d{6})_(\d{8})-(\d{6})/;
+  const match = fileName.match(timePattern);
+
+  if (!match) {
+    console.log("No time pattern match in fileName:", fileName);
+    return { startTime: null, endTime: null };
+  }
+
+  const [, startDate, startTime, endDate, endTime] = match;
+  console.log("Extracted time parts:", { startDate, startTime, endDate, endTime });
+
+  // 解析开始时间
+  const startYear = parseInt(startDate.substring(0, 4));
+  const startMonth = parseInt(startDate.substring(4, 6)) - 1; // 月份从0开始
+  const startDay = parseInt(startDate.substring(6, 8));
+  const startHour = parseInt(startTime.substring(0, 2));
+  const startMinute = parseInt(startTime.substring(2, 4));
+  const startSecond = parseInt(startTime.substring(4, 6));
+
+  // 解析结束时间
+  const endYear = parseInt(endDate.substring(0, 4));
+  const endMonth = parseInt(endDate.substring(4, 6)) - 1;
+  const endDay = parseInt(endDate.substring(6, 8));
+  const endHour = parseInt(endTime.substring(0, 2));
+  const endMinute = parseInt(endTime.substring(2, 4));
+  const endSecond = parseInt(endTime.substring(4, 6));
+
+  const startDateTime = new Date(
+    startYear,
+    startMonth,
+    startDay,
+    startHour,
+    startMinute,
+    startSecond
+  );
+  const endDateTime = new Date(endYear, endMonth, endDay, endHour, endMinute, endSecond);
+
+  console.log("Parsed dates:", {
+    startDateTime: startDateTime.toISOString(),
+    endDateTime: endDateTime.toISOString(),
+  });
+
+  return { startTime: startDateTime, endTime: endDateTime };
+};
+
+// 判断问题时间是否在日志时间范围内
+const isTimeInRange = (fileName: string): boolean => {
+  if (!aipInfo.dateTime) {
+    console.log("No dateTime in aipInfo");
+    return false;
+  }
+
+  const { startTime, endTime } = extractTimeRangeFromFileName(fileName);
+
+  if (!startTime || !endTime) {
+    console.log("Failed to extract time range from fileName:", fileName);
+    return false;
+  }
+
+  // 解析问题时间 - 尝试多种格式
+  let problemTime: Date;
+  try {
+    problemTime = new Date(aipInfo.dateTime);
+    // 如果解析失败，尝试其他格式
+    if (isNaN(problemTime.getTime())) {
+      // 尝试替换格式，比如将空格替换为T
+      const isoFormat = aipInfo.dateTime.replace(" ", "T");
+      problemTime = new Date(isoFormat);
+    }
+  } catch (error) {
+    console.error("Failed to parse problem time:", aipInfo.dateTime, error);
+    return false;
+  }
+
+  if (isNaN(problemTime.getTime())) {
+    console.error("Invalid problem time:", aipInfo.dateTime);
+    return false;
+  }
+
+  // 判断问题时间是否在日志时间范围内
+  const ret = problemTime >= startTime && problemTime <= endTime;
+  return ret;
+};
+
+// 获取行的CSS类名
+const getRowClassName = ({ row }: { row: LogFile }): string => {
+  return isTimeInRange(row.name) ? "highlight-row" : "";
+};
 </script>
 
 <style scoped>
@@ -410,40 +511,62 @@ const stopResize = () => {
   position: relative;
   display: flex;
   gap: 10px;
-  height: calc(100vh - 100px);
+  width: 100vw;
+  max-width: 100%;
+  height: calc(100vh - 60px);
+  padding: 0;
+  margin: 0;
   overflow: hidden;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
 }
 
 .left-panel {
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  min-width: 250px;
+  padding: 20px;
   overflow-y: auto;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px 0 0 12px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .right-panel {
   display: flex;
   flex-direction: column;
-  min-width: 300px;
+  min-width: 400px;
   height: 100%;
   overflow: hidden;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 0 12px 12px 0;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .resize-handle {
+  position: relative;
+  z-index: 10;
   width: 10px;
   cursor: col-resize;
-  background-color: transparent;
-  transition: background-color 0.2s;
+  background: linear-gradient(to bottom, #667eea, #764ba2);
+  border-radius: 5px;
+  opacity: 0.3;
+  transition: all 0.15s ease;
 }
 
 .resize-handle:hover {
-  background-color: #409eff;
+  background: linear-gradient(to bottom, #409eff, #66b1ff);
+  opacity: 0.8;
+  transform: scaleX(1.2);
 }
 
 .resize-handle:active {
-  background-color: #66b1ff;
+  background: linear-gradient(to bottom, #337ecc, #4d9eff);
+  opacity: 1;
+  transform: scaleX(1.5);
 }
 
 .empty-state {
@@ -451,17 +574,32 @@ const stopResize = () => {
   flex: 1;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  margin: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .empty-content {
-  color: #909399;
+  padding: 40px;
+  color: #64748b;
   text-align: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 5%);
+  transition: all 0.2s ease;
+}
+
+.empty-content:hover {
+  box-shadow: 0 8px 30px rgb(0 0 0 / 10%);
+  transform: translateY(-2px);
 }
 
 .empty-content p {
   margin-top: 16px;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .log-tabs {
@@ -469,14 +607,21 @@ const stopResize = () => {
   flex: 1;
   flex-direction: column;
   height: 100%;
+  margin: 16px;
+  overflow: hidden;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 5%);
 }
 
 .log-tabs :deep(.el-tabs__header) {
   flex-shrink: 0;
-  padding: 0 8px;
+  padding: 0 16px;
   margin: 0;
-  background: #fff;
-  border-bottom: 1px solid #dcdfe6;
+  background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
+  border-radius: 12px 12px 0 0;
+  transition: all 0.2s ease;
 }
 
 .log-tabs :deep(.el-tabs__nav-wrap) {
@@ -488,12 +633,14 @@ const stopResize = () => {
   flex: 1;
   padding: 0;
   overflow: hidden;
+  background: white;
 }
 
 .log-tabs :deep(.el-tab-pane) {
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding: 16px;
 }
 
 .tab-content {
@@ -501,7 +648,10 @@ const stopResize = () => {
   flex: 1;
   flex-direction: column;
   height: 100%;
+  padding: 12px;
   overflow: hidden;
+  background: #f8fafc;
+  border-radius: 8px;
 }
 
 /* 确保LogViewer在Tab中能占满空间 */
@@ -509,6 +659,9 @@ const stopResize = () => {
   display: flex;
   flex: 1;
   height: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 5%);
 }
 
 /* 确保MonacoEditor在LogViewer中能占满空间 */
@@ -516,18 +669,29 @@ const stopResize = () => {
   flex: 1;
   height: 100%;
   min-height: 200px;
+  overflow: hidden;
+  border-radius: 8px;
 }
 
 .tab-label-container {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  max-width: 200px;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.tab-label-container:hover {
+  background: rgb(64 158 255 / 10%);
+  transform: translateY(-1px);
 }
 
 .tab-icon {
   flex-shrink: 0;
-  color: #909399;
+  color: #64748b;
+  transition: color 0.15s ease;
 }
 
 .tab-label {
@@ -535,62 +699,234 @@ const stopResize = () => {
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 0.15s ease;
 }
 
 .log-tabs :deep(.el-tabs__item) {
-  max-width: 250px;
-  padding: 0 12px;
+  max-width: 280px;
+  padding: 8px 16px;
+  margin: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.log-tabs :deep(.el-tabs__item:hover) {
+  background: rgb(64 158 255 / 5%);
+  border-color: rgb(64 158 255 / 20%);
+  transform: translateY(-1px);
 }
 
 .log-tabs :deep(.el-tabs__item.is-active) {
-  background: #fff;
-  border-bottom-color: #fff;
+  background: white;
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgb(64 158 255 / 20%);
+  transform: translateY(-1px);
+}
+
+.log-tabs :deep(.el-tabs__item.is-active .tab-icon) {
+  color: #409eff;
+}
+
+.log-tabs :deep(.el-tabs__item.is-active .tab-label) {
+  color: #409eff;
 }
 
 .rich-text-panel {
   display: flex;
   flex-direction: column;
-  width: 300px;
-  border-left: 1px solid #dcdfe6;
+  width: 320px;
+  margin: 16px;
+  overflow: hidden;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
+  transition: all 0.2s ease;
 }
 
 .rich-text-header {
-  padding: 10px;
-  background-color: #f5f7fa;
-  border-bottom: 1px solid #dcdfe6;
+  padding: 16px 20px;
+  color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  transition: all 0.2s ease;
 }
 
 .rich-text-header h3 {
   margin: 0;
-  font-size: 16px;
-  color: #303133;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .rich-text-content {
   flex: 1;
-  padding: 10px;
+  padding: 20px;
   overflow-y: auto;
+  background: #f8fafc;
 }
 
 .action-item {
-  margin-bottom: 8px;
-  line-height: 1.5;
+  padding: 12px;
+  margin-bottom: 12px;
+  line-height: 1.6;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.action-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgb(64 158 255 / 10%);
+  transform: translateY(-1px);
 }
 
 .action-item .time {
   margin-right: 8px;
-  color: #909399;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
 }
 
 .action-item .action {
   margin-right: 8px;
+  font-weight: 600;
   color: #409eff;
 }
 
 .action-item .text {
-  color: #606266;
+  color: #475569;
   word-break: break-all;
+}
+
+/* 高亮显示包含问题时间的日志行 */
+.left-panel :deep(.el-table .highlight-row) {
+  background-color: rgb(245 108 108 / 10%) !important;
+}
+
+.left-panel :deep(.el-table .highlight-row:hover) {
+  background-color: rgb(245 108 108 / 15%) !important;
+}
+
+.left-panel :deep(.el-table .highlight-row td) {
+  font-weight: 600;
+  color: #f56c6c !important;
+}
+
+.highlight-row {
+  font-weight: 600;
+  color: #f56c6c !important;
+}
+
+/* 表格样式优化 */
+.left-panel :deep(.el-form) {
+  padding: 20px;
+  margin-bottom: 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.left-panel :deep(.el-form:hover) {
+  box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
+}
+
+.left-panel :deep(.el-table) {
+  margin-bottom: 16px;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 5%);
+  transition: all 0.2s ease;
+}
+
+.left-panel :deep(.el-table:hover) {
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
+}
+
+.left-panel :deep(.el-table__row) {
+  transition: all 0.15s ease;
+}
+
+.left-panel :deep(.el-table__row:hover) {
+  background-color: rgb(64 158 255 / 5%) !important;
+  transform: translateX(2px);
+}
+
+/* 响应式设计 */
+@media (width <= 1200px) {
+  .aip-info-container {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 60px);
+  }
+
+  .left-panel {
+    min-width: 100%;
+    max-height: 40vh;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .right-panel {
+    min-width: 100%;
+    min-height: 60vh;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .resize-handle {
+    width: 100%;
+    height: 10px;
+    cursor: row-resize;
+  }
+
+  .rich-text-panel {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+  }
+}
+
+@media (width <= 768px) {
+  .aip-info-container {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .left-panel {
+    padding: 16px;
+    border-radius: 8px;
+  }
+
+  .right-panel {
+    border-radius: 8px;
+  }
+
+  .log-tabs {
+    margin: 8px;
+    border-radius: 8px;
+  }
+
+  .log-tabs :deep(.el-tabs__header) {
+    border-radius: 8px 8px 0 0;
+  }
+
+  .tab-content {
+    padding: 8px;
+  }
+}
+
+/* 加载动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

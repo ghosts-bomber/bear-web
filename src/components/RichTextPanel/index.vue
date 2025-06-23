@@ -27,31 +27,88 @@ const richTextPanelRef = ref<HTMLElement | null>(null);
 
 // 存储图表实例用于清理
 const chartInstances = new Map<string, any>();
+// 存储图表配置用于重新渲染
+const chartConfigs = new Map<string, any>();
+
+// 图表渲染队列
+const chartRenderQueue: Array<{ chartId: string; option: any }> = [];
+let isProcessingQueue = false;
 
 // ResizeObserver 实例
 let resizeObserver: ResizeObserver | null = null;
 
 // 渲染ECharts图表
 const renderChart = async (chartId: string, chartOption: any) => {
+  console.log(`Starting renderChart for ${chartId}`);
+
+  // 等待DOM更新
   await nextTick();
-  console.log("renderChart", chartId, chartOption);
-  const chartDom = document.getElementById(chartId);
+
+  // 使用更可靠的DOM检测机制
+  const waitForElement = (id: string, maxAttempts = 30): Promise<HTMLElement | null> => {
+    return new Promise((resolve) => {
+      let attempts = 0;
+
+      const checkElement = () => {
+        const element = document.getElementById(id);
+        console.log(
+          `Attempt ${attempts + 1} for ${id}: element found: ${!!element}, visible: ${element?.offsetParent !== null}`
+        );
+
+        if (element && element.offsetParent !== null) {
+          // 元素存在且可见
+          console.log(`Element ${id} found and visible after ${attempts + 1} attempts`);
+          resolve(element);
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(checkElement, 150);
+        } else {
+          console.warn(`Element ${id} not found after ${maxAttempts} attempts`);
+          resolve(null);
+        }
+      };
+      checkElement();
+    });
+  };
+
+  const chartDom = await waitForElement(chartId);
+
   if (chartDom) {
     try {
+      console.log(
+        `Initializing chart ${chartId}, container size: ${chartDom.offsetWidth}x${chartDom.offsetHeight}`
+      );
+
       // 清理已存在的图表实例
       if (chartInstances.has(chartId)) {
+        console.log(`Disposing existing chart instance for ${chartId}`);
         chartInstances.get(chartId).dispose();
         chartInstances.delete(chartId);
+      }
+
+      // 确保容器有正确的尺寸
+      if (chartDom.offsetWidth === 0 || chartDom.offsetHeight === 0) {
+        console.warn(`Chart container ${chartId} has zero dimensions, setting default size`);
+        // 设置默认尺寸
+        chartDom.style.width = "100%";
+        chartDom.style.height = "500px";
+        // 强制重新计算布局
+        chartDom.offsetHeight;
       }
 
       const myChart = echarts.init(chartDom);
       myChart.setOption(chartOption);
 
-      // 存储图表实例
+      // 存储图表实例和配置
       chartInstances.set(chartId, myChart);
+      chartConfigs.set(chartId, chartOption);
 
       // 响应式处理
-      const resizeHandler = () => myChart.resize();
+      const resizeHandler = () => {
+        if (chartInstances.has(chartId)) {
+          chartInstances.get(chartId).resize();
+        }
+      };
       window.addEventListener("resize", resizeHandler);
 
       // 清理函数（在组件卸载时调用）
@@ -61,11 +118,19 @@ const renderChart = async (chartId: string, chartOption: any) => {
           chartInstances.get(chartId).dispose();
           chartInstances.delete(chartId);
         }
+        chartConfigs.delete(chartId);
       };
+
+      console.log(`Chart ${chartId} rendered successfully, total charts: ${chartInstances.size}`);
+
+      // 渲染完成后，检查并重新渲染所有图表以确保可见性
+      setTimeout(() => {
+        reRenderAllCharts();
+      }, 100);
 
       return cleanup;
     } catch (error) {
-      console.error("ECharts渲染失败:", error);
+      console.error(`ECharts渲染失败 for ${chartId}:`, error);
       if (chartDom) {
         chartDom.innerHTML = `<div style="padding: 20px; color: red; text-align: center;">
           <div>图表渲染失败</div>
@@ -73,6 +138,8 @@ const renderChart = async (chartId: string, chartOption: any) => {
         </div>`;
       }
     }
+  } else {
+    console.error(`Chart container ${chartId} not found or not visible`);
   }
 };
 
@@ -110,7 +177,7 @@ const handlePluginResult = async (pluginName: string, result: string | PluginRes
 
     // 添加图表容器
     if (result.chart && result.chart.type === "echarts") {
-      console.log("add echarts-chart");
+      console.log(`Adding echarts-chart with ID: ${chartId}`);
       html += `
         <div class="echarts-container" style="margin: 20px 0;">
           <div class="chart-header" style="margin-bottom: 10px; font-weight: bold; color: #333;">
@@ -124,10 +191,16 @@ const handlePluginResult = async (pluginName: string, result: string | PluginRes
           </div>
         </div>`;
 
-      // 异步渲染图表
+      // 使用队列机制渲染图表
+      queueChartRender(chartId, result.chart!.option);
+
+      // 为这个特定图表添加独立的渲染尝试
       setTimeout(async () => {
-        await renderChart(chartId, result.chart!.option);
-      }, 200);
+        console.log(`Independent render attempt for ${chartId}`);
+        if (!chartInstances.has(chartId)) {
+          await renderChart(chartId, result.chart!.option);
+        }
+      }, 500);
     }
 
     html += `</div></div>`;
@@ -148,29 +221,6 @@ const handleEditorAction = async (action: {
   let actionContent = "";
 
   switch (action.action) {
-    case "copy":
-      actionContent = `<div class="action-item">
-        <span class="time">[${timestamp}]</span>
-        <span class="action">复制内容：</span>
-        <span class="text">${action.text}</span>
-      </div>`;
-      break;
-    case "select-all":
-      const editor = props.editorRef.value?.getEditor();
-      const selectedText = editor?.getModel()?.getValue() || "";
-      actionContent = `<div class="action-item">
-        <span class="time">[${timestamp}]</span>
-        <span class="action">全选内容：</span>
-        <span class="text">${selectedText}</span>
-      </div>`;
-      break;
-    case "toggle-word-wrap":
-      actionContent = `<div class="action-item">
-        <span class="time">[${timestamp}]</span>
-        <span class="action">切换自动换行：</span>
-        <span class="text">${action.value === "on" ? "开启" : "关闭"}</span>
-      </div>`;
-      break;
     case "plugin-processing":
       actionContent = `<div class="action-item plugin-processing">
         <span class="time">[${timestamp}]</span>
@@ -200,6 +250,55 @@ const handleEditorAction = async (action: {
   }
 
   content.value = content.value + actionContent;
+
+  // 确保DOM更新后重新渲染所有图表
+  await nextTick();
+
+  // 每次内容更新都需要重新渲染图表，因为v-html会重新创建DOM
+  setTimeout(async () => {
+    console.log("Content updated, re-rendering all charts...");
+    await reRenderAllChartsAfterContentUpdate();
+
+    // 处理新增的图表
+    if (
+      action.action === "plugin-result" &&
+      action.result &&
+      typeof action.result === "object" &&
+      action.result.chart
+    ) {
+      await processChartQueue();
+    }
+  }, 100);
+
+  // 备用检查机制：再次延迟检查是否有未渲染的图表
+  setTimeout(async () => {
+    const allChartContainers = document.querySelectorAll(".echarts-chart");
+    console.log(
+      `Backup check: Found ${allChartContainers.length} chart containers, active charts: ${chartInstances.size}`
+    );
+
+    // 检查所有图表容器，重新渲染未渲染的图表
+    for (let i = 0; i < allChartContainers.length; i++) {
+      const container = allChartContainers[i] as HTMLElement;
+      const chartId = container.id;
+      if (chartId && !chartInstances.has(chartId)) {
+        console.log(`Found unrendered chart: ${chartId}, attempting to render...`);
+        // 尝试从配置中找到对应的选项
+        if (chartConfigs.has(chartId)) {
+          await renderChart(chartId, chartConfigs.get(chartId));
+        } else {
+          // 如果配置中没有，尝试从队列中找到
+          const queueItem = chartRenderQueue.find((item) => item.chartId === chartId);
+          if (queueItem) {
+            await renderChart(chartId, queueItem.option);
+          }
+        }
+      }
+    }
+
+    // 最后再次确保所有图表都正确渲染
+    await reRenderAllChartsAfterContentUpdate();
+  }, 1500);
 };
 
 // 清空内容
@@ -210,6 +309,8 @@ const clearContent = () => {
     chart.dispose();
   });
   chartInstances.clear();
+  // 清空图表配置
+  chartConfigs.clear();
 };
 
 // 调整所有图表大小
@@ -217,6 +318,149 @@ const resizeCharts = () => {
   chartInstances.forEach((chart) => {
     chart.resize();
   });
+};
+
+// 处理图表渲染队列
+const processChartQueue = async () => {
+  console.log(
+    `Processing chart queue, length: ${chartRenderQueue.length}, isProcessing: ${isProcessingQueue}`
+  );
+
+  if (isProcessingQueue || chartRenderQueue.length === 0) {
+    return;
+  }
+
+  isProcessingQueue = true;
+  console.log("Starting chart queue processing...");
+
+  while (chartRenderQueue.length > 0) {
+    const { chartId, option } = chartRenderQueue.shift()!;
+    console.log(`Processing chart: ${chartId}`);
+
+    try {
+      await renderChart(chartId, option);
+      console.log(`Chart ${chartId} rendered successfully`);
+      // 给每个图表渲染之间一些间隔
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } catch (error) {
+      console.error(`Failed to render chart ${chartId}:`, error);
+      // 即使失败也要继续处理下一个图表
+    }
+  }
+
+  isProcessingQueue = false;
+  console.log("Chart queue processing completed");
+};
+
+// 添加图表到渲染队列
+const queueChartRender = (chartId: string, option: any) => {
+  console.log(`Queuing chart render for ${chartId}`);
+  chartRenderQueue.push({ chartId, option });
+  // 不立即处理队列，等待handleEditorAction中的延迟处理
+};
+
+// 重新渲染所有图表的函数
+const reRenderAllCharts = async () => {
+  console.log(
+    `Re-rendering all charts to ensure visibility. Total configs: ${chartConfigs.size}, Total instances: ${chartInstances.size}`
+  );
+
+  for (const [chartId, config] of chartConfigs.entries()) {
+    const chartDom = document.getElementById(chartId);
+    if (chartDom) {
+      try {
+        // 检查图表容器是否可见
+        const isVisible =
+          chartDom.offsetParent !== null && chartDom.offsetWidth > 0 && chartDom.offsetHeight > 0;
+        console.log(
+          `Chart ${chartId}: DOM found, visible: ${isVisible}, has instance: ${chartInstances.has(chartId)}`
+        );
+
+        if (isVisible) {
+          if (chartInstances.has(chartId)) {
+            // 图表实例存在且容器可见，检查图表是否正常显示
+            const chartInstance = chartInstances.get(chartId);
+            try {
+              chartInstance.resize();
+              console.log(`Chart ${chartId}: Resized successfully`);
+            } catch (resizeError) {
+              console.warn(`Chart ${chartId}: Resize failed, re-initializing...`, resizeError);
+              // resize失败，重新初始化
+              chartInstance.dispose();
+              const newChart = echarts.init(chartDom);
+              newChart.setOption(config);
+              chartInstances.set(chartId, newChart);
+              console.log(`Chart ${chartId}: Re-initialized successfully`);
+            }
+          } else {
+            // 容器可见但没有图表实例，创建新实例
+            console.log(`Chart ${chartId}: Creating new instance`);
+            const newChart = echarts.init(chartDom);
+            newChart.setOption(config);
+            chartInstances.set(chartId, newChart);
+            console.log(`Chart ${chartId}: New instance created successfully`);
+          }
+        } else {
+          console.log(`Chart ${chartId}: Container not visible, skipping`);
+        }
+      } catch (error) {
+        console.error(`Error processing chart ${chartId}:`, error);
+      }
+    } else {
+      console.warn(`Chart ${chartId}: DOM element not found`);
+    }
+  }
+
+  console.log(`Re-rendering completed. Active instances: ${chartInstances.size}`);
+};
+
+// 在内容更新后重新渲染所有图表的函数
+const reRenderAllChartsAfterContentUpdate = async () => {
+  console.log(
+    `Re-rendering all charts after content update. Total configs: ${chartConfigs.size}, Total instances: ${chartInstances.size}`
+  );
+
+  // 先清理所有现有的图表实例，因为DOM已经重新创建
+  chartInstances.forEach((chart) => {
+    try {
+      chart.dispose();
+    } catch (error) {
+      console.warn("Error disposing chart:", error);
+    }
+  });
+  chartInstances.clear();
+
+  // 重新渲染所有配置的图表
+  for (const [chartId, config] of chartConfigs.entries()) {
+    const chartDom = document.getElementById(chartId);
+    if (chartDom) {
+      try {
+        // 检查图表容器是否可见
+        const isVisible =
+          chartDom.offsetParent !== null && chartDom.offsetWidth > 0 && chartDom.offsetHeight > 0;
+        console.log(`Chart ${chartId}: DOM found, visible: ${isVisible}`);
+
+        if (isVisible) {
+          // 创建新的图表实例
+          console.log(`Chart ${chartId}: Creating new instance after content update`);
+          const newChart = echarts.init(chartDom);
+          newChart.setOption(config);
+          chartInstances.set(chartId, newChart);
+          console.log(`Chart ${chartId}: New instance created successfully after content update`);
+        } else {
+          console.log(`Chart ${chartId}: Container not visible, will retry later`);
+        }
+      } catch (error) {
+        console.error(`Error processing chart ${chartId} after content update:`, error);
+      }
+    } else {
+      console.warn(`Chart ${chartId}: DOM element not found after content update`);
+    }
+  }
+
+  console.log(
+    `Re-rendering after content update completed. Active instances: ${chartInstances.size}`
+  );
 };
 
 // 设置 ResizeObserver 来监听容器大小变化
@@ -244,6 +488,8 @@ onBeforeUnmount(() => {
     chart.dispose();
   });
   chartInstances.clear();
+  // 清理图表配置
+  chartConfigs.clear();
 });
 
 // 暴露方法给父组件

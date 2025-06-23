@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import type { Plugin } from "@/types/plugin";
 import { pluginLoader } from "@/plugins/log-viewer";
-
+let loaded = false;
 interface PluginState {
   plugins: Plugin[];
 }
@@ -22,9 +22,12 @@ export const usePluginStore = defineStore("plugin", {
 
   actions: {
     loadPlugins() {
-      pluginLoader.loadAllPlugins();
-      this.plugins = pluginLoader.getAllPlugins();
-      console.log("loadPlugins:" + this.plugins);
+      if (!loaded) {
+        pluginLoader.loadAllPlugins();
+        this.plugins = pluginLoader.getAllPlugins();
+        console.log("loadPlugins:" + this.plugins);
+      }
+      loaded = true;
     },
   },
 });

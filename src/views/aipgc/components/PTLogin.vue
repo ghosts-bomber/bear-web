@@ -137,7 +137,7 @@ async function handleLoginSubmit() {
   loading.value = true;
   PTApi.login(loginData.value)
     .then((data) => {
-      const { access_token } = data.data;
+      const { access_token } = data;
       if (access_token !== "") {
         setPFToken(access_token);
         console.log("access token:", access_token);

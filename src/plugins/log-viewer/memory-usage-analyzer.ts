@@ -46,12 +46,11 @@ const memoryUsageAnalyzerPlugin: Plugin = {
     let timeMatches = 0;
     let memoryMatches = 0;
 
-    // 解析日志数据 - 严格按照Python逻辑
+    // 解析日志数据
     for (const line of lines) {
       // 检测内存使用率行 - 'neodrive memory'
       if (line.includes("neodrive memory")) {
         try {
-          // Python逻辑: tp = line.split()[1].split("][")[0].split(".")[0]
           const parts = line.split(" ");
           if (parts.length > 6) {
             const timePart = parts[1].split("][")[0].split(".")[0];
@@ -63,7 +62,6 @@ const memoryUsageAnalyzerPlugin: Plugin = {
             timePoints.push(time);
             timeMatches++;
 
-            // Python逻辑: usage = float(line.split()[6]) * 1024
             const usage = parseFloat(parts[6]) * 1024; // 转换为MB
             memoryUsage.push(usage);
             memoryMatches++;
@@ -172,7 +170,7 @@ const memoryUsageAnalyzerPlugin: Plugin = {
           type: "value",
           name: "内存使用率 (MB)",
           min: 0,
-          max: 25000,
+          max: 29000,
           interval: 1000,
           axisLabel: {
             formatter: "{value} MB",

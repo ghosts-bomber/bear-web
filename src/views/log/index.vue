@@ -7,76 +7,72 @@
 
     <div class="log-content">
       <!-- Header Section -->
-      <div class="log-header">
+      <div class="page-header">
         <div class="header-icon">
-          <el-icon size="60" color="#F56C6C">
+          <el-icon size="48" color="#f56c6c">
             <Document />
           </el-icon>
         </div>
-        <h1 class="log-title">日志分析中心</h1>
-        <p class="log-subtitle">实时日志查看与分析，多维度数据可视化</p>
-      </div>
-
-      <!-- Quick Actions -->
-      <div class="actions-grid">
-        <div class="action-card">
-          <div class="action-icon">
-            <el-icon size="32" color="#409eff"><Upload /></el-icon>
-          </div>
-          <h3>上传日志</h3>
-          <p>支持多种格式的日志文件上传</p>
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :show-file-list="false"
-            :on-change="handleLogUpload"
-            accept=".log,.txt,.json"
-            class="upload-component"
-          >
-            <el-button type="primary" size="large">
-              <el-icon><Upload /></el-icon>
-              选择文件
-            </el-button>
-          </el-upload>
-        </div>
-
-        <div class="action-card">
-          <div class="action-icon">
-            <el-icon size="32" color="#67c23a"><Connection /></el-icon>
-          </div>
-          <h3>实时连接</h3>
-          <p>连接到实时日志流进行监控</p>
-          <el-button type="success" size="large" :loading="isConnecting" @click="connectRealTime">
-            <el-icon><Connection /></el-icon>
-            {{ isConnecting ? "连接中..." : "实时连接" }}
-          </el-button>
-        </div>
-
-        <div class="action-card">
-          <div class="action-icon">
-            <el-icon size="32" color="#e6a23c"><DataAnalysis /></el-icon>
-          </div>
-          <h3>智能分析</h3>
-          <p>AI驱动的日志内容深度分析</p>
-          <el-button type="warning" size="large" :disabled="!hasLogContent" @click="startAnalysis">
-            <el-icon><DataAnalysis /></el-icon>
-            开始分析
-          </el-button>
+        <div class="header-text">
+          <h1 class="page-title">日志分析中心</h1>
+          <p class="page-subtitle">实时日志查看与智能分析平台</p>
         </div>
       </div>
 
-      <!-- Main Editor Area -->
+      <!-- Quick Stats -->
+      <div class="stats-section">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon error">
+              <el-icon size="28"><Warning /></el-icon>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ errorCount }}</div>
+              <div class="stat-label">错误数量</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon warning">
+              <el-icon size="28"><WarnTriangleFilled /></el-icon>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ warningCount }}</div>
+              <div class="stat-label">警告数量</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon info">
+              <el-icon size="28"><InfoFilled /></el-icon>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ infoCount }}</div>
+              <div class="stat-label">信息数量</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon success">
+              <el-icon size="28"><CircleCheck /></el-icon>
+            </div>
+            <div class="stat-content">
+              <div class="stat-number">{{ isConnected ? "在线" : "离线" }}</div>
+              <div class="stat-label">连接状态</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Editor Section -->
       <div class="editor-section">
         <div class="editor-header">
           <div class="header-left">
-            <h3 class="editor-title">
-              <el-icon size="20" color="#f56c6c"><Document /></el-icon>
+            <div class="editor-title">
+              <el-icon size="20" color="#f56c6c"><Edit /></el-icon>
               日志编辑器
-            </h3>
-            <div class="editor-stats">
-              <span class="stat-item">行数: {{ lineCount }}</span>
-              <span class="stat-item">大小: {{ formatFileSize(contentSize) }}</span>
-              <span class="stat-item">编码: UTF-8</span>
+            </div>
+            <div class="connection-status">
+              <el-tag :type="isConnected ? 'success' : 'danger'" size="small">
+                {{ isConnected ? "已连接" : "未连接" }}
+              </el-tag>
             </div>
           </div>
           <div class="header-right">
@@ -94,98 +90,134 @@
                 下载
               </el-button>
             </el-button-group>
-            <el-dropdown @command="handleThemeChange">
-              <el-button size="small">
-                <el-icon><Setting /></el-icon>
-                主题
-                <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="vs-dark">深色主题</el-dropdown-item>
-                  <el-dropdown-item command="vs">浅色主题</el-dropdown-item>
-                  <el-dropdown-item command="hc-black">高对比度</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <el-select
+              v-model="selectedTheme"
+              size="small"
+              style="width: 120px"
+              @change="changeTheme"
+            >
+              <el-option label="VS Dark" value="vs-dark" />
+              <el-option label="VS Light" value="vs" />
+              <el-option label="High Contrast" value="hc-black" />
+            </el-select>
           </div>
         </div>
 
         <div class="editor-container">
-          <div id="monaco" ref="monacoRef" class="monaco-editor" />
+          <div class="editor-main">
+            <div ref="monacoContainer" class="monaco-container" />
+          </div>
 
-          <!-- Analysis Panel -->
-          <div v-if="showAnalysisPanel" class="analysis-panel">
+          <div class="analysis-panel" :class="{ hidden: !showAnalysisPanel }">
             <div class="panel-header">
-              <h4>分析结果</h4>
-              <el-button size="small" text @click="closeAnalysisPanel">
-                <el-icon><Close /></el-icon>
+              <h4>分析面板</h4>
+              <el-button size="small" text @click="toggleAnalysisPanel">
+                <el-icon><ArrowLeft /></el-icon>
               </el-button>
             </div>
+
             <div class="panel-content">
-              <div class="analysis-tabs">
-                <el-tabs v-model="activeAnalysisTab" type="card">
-                  <el-tab-pane label="错误统计" name="errors">
-                    <div class="analysis-section">
+              <el-tabs v-model="activeAnalysisTab" class="analysis-tabs">
+                <el-tab-pane label="统计" name="stats">
+                  <div class="stats-content">
+                    <div class="metric-grid">
                       <div class="metric-card">
-                        <div class="metric-number">{{ analysisResults.errorCount }}</div>
-                        <div class="metric-label">错误数量</div>
+                        <div class="metric-number">{{ errorCount }}</div>
+                        <div class="metric-label">错误</div>
                       </div>
                       <div class="metric-card">
-                        <div class="metric-number">{{ analysisResults.warningCount }}</div>
-                        <div class="metric-label">警告数量</div>
+                        <div class="metric-number">{{ warningCount }}</div>
+                        <div class="metric-label">警告</div>
                       </div>
                       <div class="metric-card">
-                        <div class="metric-number">{{ analysisResults.infoCount }}</div>
-                        <div class="metric-label">信息数量</div>
+                        <div class="metric-number">{{ infoCount }}</div>
+                        <div class="metric-label">信息</div>
                       </div>
                     </div>
-                  </el-tab-pane>
-                  <el-tab-pane label="时间分布" name="timeline">
-                    <div class="chart-container">
-                      <div ref="timelineChart" class="chart" />
+                  </div>
+                </el-tab-pane>
+
+                <el-tab-pane label="时间线" name="timeline">
+                  <div class="chart-container">
+                    <div ref="timelineChart" class="chart">
+                      <div class="chart-placeholder">
+                        <el-icon size="32" color="#c0c4cc"><TrendCharts /></el-icon>
+                        <p>时间线图表</p>
+                      </div>
                     </div>
-                  </el-tab-pane>
-                  <el-tab-pane label="关键词" name="keywords">
-                    <div class="keywords-section">
-                      <el-tag
-                        v-for="keyword in analysisResults.keywords"
-                        :key="keyword.word"
-                        :type="getKeywordType(keyword.level)"
-                        class="keyword-tag"
-                      >
-                        {{ keyword.word }} ({{ keyword.count }})
-                      </el-tag>
+                  </div>
+                </el-tab-pane>
+
+                <el-tab-pane label="关键词" name="keywords">
+                  <div class="keywords-section">
+                    <div v-for="keyword in commonKeywords" :key="keyword" class="keyword-tag">
+                      {{ keyword }}
                     </div>
-                  </el-tab-pane>
-                </el-tabs>
-              </div>
+                  </div>
+                </el-tab-pane>
+              </el-tabs>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Quick Tools -->
+      <!-- Tools and Actions -->
       <div class="tools-section">
-        <div class="tools-header">
-          <h3>快速工具</h3>
-        </div>
         <div class="tools-grid">
-          <div class="tool-card" @click="searchInLogs">
-            <el-icon size="24" color="#409eff"><Search /></el-icon>
-            <span>搜索日志</span>
+          <!-- File Upload -->
+          <div class="tool-card" @click="uploadLogFile">
+            <div class="tool-icon">
+              <el-icon size="32" color="#409eff"><Upload /></el-icon>
+            </div>
+            <h3>上传日志</h3>
+            <p>从本地上传日志文件</p>
           </div>
-          <div class="tool-card" @click="filterLogs">
-            <el-icon size="24" color="#67c23a"><Filter /></el-icon>
-            <span>过滤内容</span>
+
+          <!-- Real-time Connection -->
+          <div class="tool-card" @click="toggleConnection">
+            <div class="tool-icon">
+              <el-icon size="32" :color="isConnected ? '#67c23a' : '#f56c6c'">
+                <Connection />
+              </el-icon>
+            </div>
+            <h3>{{ isConnected ? "断开连接" : "实时连接" }}</h3>
+            <p>{{ isConnected ? "停止实时日志流" : "连接到实时日志流" }}</p>
           </div>
+
+          <!-- Generate Sample -->
+          <div class="tool-card" @click="generateSampleLog">
+            <div class="tool-icon">
+              <el-icon size="32" color="#e6a23c"><Magic /></el-icon>
+            </div>
+            <h3>生成示例</h3>
+            <p>生成示例日志内容</p>
+          </div>
+
+          <!-- Search -->
+          <div class="tool-card" @click="showSearchDialog">
+            <div class="tool-icon">
+              <el-icon size="32" color="#909399"><Search /></el-icon>
+            </div>
+            <h3>高级搜索</h3>
+            <p>搜索和过滤日志内容</p>
+          </div>
+
+          <!-- Export -->
           <div class="tool-card" @click="exportLogs">
-            <el-icon size="24" color="#e6a23c"><Download /></el-icon>
-            <span>导出数据</span>
+            <div class="tool-icon">
+              <el-icon size="32" color="#606266"><Share /></el-icon>
+            </div>
+            <h3>导出分析</h3>
+            <p>导出分析结果报告</p>
           </div>
-          <div class="tool-card" @click="shareLogs">
-            <el-icon size="24" color="#f56c6c"><Share /></el-icon>
-            <span>分享链接</span>
+
+          <!-- Settings -->
+          <div class="tool-card" @click="showSettings">
+            <div class="tool-icon">
+              <el-icon size="32" color="#909399"><Setting /></el-icon>
+            </div>
+            <h3>设置</h3>
+            <p>配置分析参数和偏好</p>
           </div>
         </div>
       </div>
@@ -194,505 +226,476 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
 import * as monaco from "monaco-editor";
 import {
   Document,
-  Upload,
-  Connection,
-  DataAnalysis,
+  Edit,
   Delete,
   CopyDocument,
   Download,
-  Setting,
-  ArrowDown,
-  Close,
+  ArrowLeft,
+  Upload,
+  Connection,
+  Magic,
   Search,
-  Filter,
   Share,
+  Setting,
+  Warning,
+  WarnTriangleFilled,
+  InfoFilled,
+  CircleCheck,
+  TrendCharts,
 } from "@element-plus/icons-vue";
 
-defineOptions({
-  name: "Log",
-});
+const monacoContainer = ref<HTMLElement>();
+const timelineChart = ref<HTMLElement>();
+let monacoEditor: monaco.editor.IStandaloneCodeEditor | null = null;
 
-// Monaco Editor props (keeping compatibility)
-const props = defineProps({
-  code: {
-    type: String,
-    default: "",
-  },
-  language: {
-    type: String,
-    default: "plaintext",
-  },
-  line: {
-    type: Number,
-    default: 0,
-  },
-});
+// 响应式数据
+const selectedTheme = ref("vs-dark");
+const showAnalysisPanel = ref(true);
+const activeAnalysisTab = ref("stats");
+const isConnected = ref(false);
+const errorCount = ref(12);
+const warningCount = ref(35);
+const infoCount = ref(128);
 
-// Reactive data
-const monacoRef = ref();
-const uploadRef = ref();
-const timelineChart = ref();
-const isConnecting = ref(false);
-const showAnalysisPanel = ref(false);
-const activeAnalysisTab = ref("errors");
-const currentTheme = ref("vs-dark");
+const commonKeywords = ref([
+  "ERROR",
+  "WARNING",
+  "INFO",
+  "DEBUG",
+  "TRACE",
+  "Exception",
+  "Failed",
+  "Success",
+  "Timeout",
+  "Connection",
+]);
 
-let editor: any = null;
+// 示例日志内容
+const sampleLogContent = `[2024-12-01 09:30:15] INFO  Application started successfully
+[2024-12-01 09:30:16] DEBUG Loading configuration from config.yml
+[2024-12-01 09:30:17] INFO  Database connection established
+[2024-12-01 09:30:18] WARN  Memory usage is at 85%
+[2024-12-01 09:30:19] ERROR Failed to connect to external service
+[2024-12-01 09:30:20] INFO  Retrying connection in 5 seconds
+[2024-12-01 09:30:25] INFO  Connection restored successfully
+[2024-12-01 09:30:26] DEBUG Processing user request: GET /api/users
+[2024-12-01 09:30:27] INFO  Request completed in 245ms
+[2024-12-01 09:30:28] WARN  Rate limit approaching for IP 192.168.1.100
+[2024-12-01 09:30:29] ERROR Validation failed for user input
+[2024-12-01 09:30:30] INFO  User session created: session_123456`;
 
-// Sample analysis results
-const analysisResults = ref({
-  errorCount: 12,
-  warningCount: 34,
-  infoCount: 156,
-  keywords: [
-    { word: "ERROR", count: 12, level: "high" },
-    { word: "WARNING", count: 34, level: "medium" },
-    { word: "INFO", count: 156, level: "low" },
-    { word: "TIMEOUT", count: 8, level: "high" },
-    { word: "SUCCESS", count: 203, level: "low" },
-  ],
-});
+// 方法
+const initMonaco = async () => {
+  if (!monacoContainer.value) return;
 
-// Computed properties
-const hasLogContent = computed(() => {
-  return editor && editor.getValue().trim().length > 0;
-});
-
-const lineCount = computed(() => {
-  if (!editor) return 0;
-  return editor.getModel()?.getLineCount() || 0;
-});
-
-const contentSize = computed(() => {
-  if (!editor) return 0;
-  return new Blob([editor.getValue()]).size;
-});
-
-// Methods
-const init = () => {
-  if (!monacoRef.value) return;
-
-  editor = monaco.editor.create(monacoRef.value, {
-    value: props.code || generateSampleLog(),
-    language: props.language,
-    theme: currentTheme.value,
-    automaticLayout: true,
-    lineHeight: 24,
-    tabSize: 2,
-    minimap: {
-      enabled: true,
+  // 设置Monaco编辑器的worker
+  self.MonacoEnvironment = {
+    getWorkerUrl: function (moduleId, label) {
+      if (label === "json") {
+        return "./monaco-editor/esm/vs/language/json/json.worker.js";
+      }
+      if (label === "css" || label === "scss" || label === "less") {
+        return "./monaco-editor/esm/vs/language/css/css.worker.js";
+      }
+      if (label === "html" || label === "handlebars" || label === "razor") {
+        return "./monaco-editor/esm/vs/language/html/html.worker.js";
+      }
+      if (label === "typescript" || label === "javascript") {
+        return "./monaco-editor/esm/vs/language/typescript/ts.worker.js";
+      }
+      return "./monaco-editor/esm/vs/editor/editor.worker.js";
     },
-    readOnly: false,
-    fontSize: 14,
-    wordWrap: "on",
-    scrollBeyondLastLine: false,
-    renderWhitespace: "selection",
-    lineNumbers: "on",
-    folding: true,
-  });
-
-  // Add event listeners
-  editor.onDidChangeModelContent(() => {
-    // Content changed
-  });
-};
-
-const generateSampleLog = () => {
-  return `[2024-01-15 10:30:15] INFO: Application started successfully
-[2024-01-15 10:30:16] INFO: Database connection established
-[2024-01-15 10:30:17] INFO: Loading configuration files...
-[2024-01-15 10:30:18] WARNING: Configuration file 'config.local.json' not found, using defaults
-[2024-01-15 10:30:19] INFO: Server listening on port 8080
-[2024-01-15 10:32:45] INFO: User authentication successful for user: admin@example.com
-[2024-01-15 10:33:12] ERROR: Failed to connect to external API: timeout after 30s
-[2024-01-15 10:33:13] WARNING: Retrying API connection (attempt 1/3)
-[2024-01-15 10:33:45] ERROR: Failed to connect to external API: timeout after 30s
-[2024-01-15 10:33:46] WARNING: Retrying API connection (attempt 2/3)
-[2024-01-15 10:34:18] ERROR: Failed to connect to external API: timeout after 30s
-[2024-01-15 10:34:19] ERROR: API connection failed after 3 attempts, falling back to cached data
-[2024-01-15 10:35:00] INFO: Processing user request: GET /api/data
-[2024-01-15 10:35:01] INFO: Request processed successfully in 120ms
-[2024-01-15 10:36:30] WARNING: High memory usage detected: 85% of available memory in use
-[2024-01-15 10:37:15] INFO: Garbage collection completed, memory usage now at 65%
-[2024-01-15 10:40:00] INFO: Scheduled task 'data-backup' started
-[2024-01-15 10:42:30] INFO: Scheduled task 'data-backup' completed successfully
-[2024-01-15 10:45:00] ERROR: Database query timeout: SELECT * FROM large_table WHERE created_at > '2024-01-01'
-[2024-01-15 10:45:01] WARNING: Query optimization may be required for large_table`;
-};
-
-const handleLogUpload = (file: any) => {
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const content = e.target?.result as string;
-    if (editor && content) {
-      editor.setValue(content);
-      ElMessage.success(`已加载文件: ${file.name}`);
-    }
   };
-  reader.readAsText(file.raw);
+
+  monacoEditor = monaco.editor.create(monacoContainer.value, {
+    value: "",
+    language: "plaintext",
+    theme: selectedTheme.value,
+    fontSize: 14,
+    lineNumbers: "on",
+    wordWrap: "on",
+    automaticLayout: true,
+    scrollBeyondLastLine: false,
+    minimap: { enabled: true },
+    readOnly: false,
+  });
+
+  // 监听内容变化
+  monacoEditor.onDidChangeModelContent(() => {
+    updateLogAnalysis();
+  });
 };
 
-const connectRealTime = () => {
-  isConnecting.value = true;
-  ElMessage.info("正在建立实时连接...");
-  // Simulate connection
-  setTimeout(() => {
-    isConnecting.value = false;
-    ElMessage.success("实时连接已建立");
-  }, 2000);
-};
-
-const startAnalysis = () => {
-  if (!hasLogContent.value) {
-    ElMessage.warning("请先加载日志内容");
-    return;
+const changeTheme = (theme: string) => {
+  if (monacoEditor) {
+    monaco.editor.setTheme(theme);
   }
+};
 
-  ElMessage.info("开始分析日志内容...");
-  showAnalysisPanel.value = true;
+const updateLogAnalysis = () => {
+  if (!monacoEditor) return;
 
-  // Simulate analysis
-  setTimeout(() => {
-    ElMessage.success("日志分析完成");
-    initTimelineChart();
-  }, 1000);
+  const content = monacoEditor.getValue();
+  const lines = content.split("\n");
+
+  let errors = 0;
+  let warnings = 0;
+  let infos = 0;
+
+  lines.forEach((line) => {
+    if (line.includes("ERROR")) errors++;
+    else if (line.includes("WARN")) warnings++;
+    else if (line.includes("INFO")) infos++;
+  });
+
+  errorCount.value = errors;
+  warningCount.value = warnings;
+  infoCount.value = infos;
 };
 
 const clearContent = () => {
-  if (editor) {
-    editor.setValue("");
+  if (monacoEditor) {
+    monacoEditor.setValue("");
     ElMessage.success("内容已清空");
   }
 };
 
-const copyContent = () => {
-  if (editor) {
-    const content = editor.getValue();
-    navigator.clipboard.writeText(content).then(() => {
+const copyContent = async () => {
+  if (monacoEditor) {
+    const content = monacoEditor.getValue();
+    try {
+      await navigator.clipboard.writeText(content);
       ElMessage.success("内容已复制到剪贴板");
-    });
+    } catch (error) {
+      ElMessage.error("复制失败");
+    }
   }
 };
 
 const downloadContent = () => {
-  if (editor) {
-    const content = editor.getValue();
+  if (monacoEditor) {
+    const content = monacoEditor.getValue();
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `log_${Date.now()}.txt`;
+    a.download = `log_${new Date().toISOString().slice(0, 19).replace(/[-:]/g, "_")}.txt`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    ElMessage.success("文件下载已开始");
+    ElMessage.success("日志文件已下载");
   }
 };
 
-const handleThemeChange = (theme: string) => {
-  currentTheme.value = theme;
-  if (editor) {
-    monaco.editor.setTheme(theme);
+const toggleAnalysisPanel = () => {
+  showAnalysisPanel.value = !showAnalysisPanel.value;
+};
+
+const toggleConnection = () => {
+  isConnected.value = !isConnected.value;
+  if (isConnected.value) {
+    ElMessage.success("已连接到实时日志流");
+    // 模拟实时日志
+    simulateRealTimeLog();
+  } else {
+    ElMessage.info("已断开连接");
   }
-  ElMessage.success(`已切换到${theme}主题`);
 };
 
-const closeAnalysisPanel = () => {
-  showAnalysisPanel.value = false;
+const simulateRealTimeLog = () => {
+  if (!isConnected.value || !monacoEditor) return;
+
+  const logTypes = ["INFO", "WARN", "ERROR", "DEBUG"];
+  const messages = [
+    "User login successful",
+    "Database query executed",
+    "Cache miss detected",
+    "Request timeout",
+    "Memory cleanup completed",
+    "Configuration updated",
+  ];
+
+  const addLogLine = () => {
+    if (!isConnected.value) return;
+
+    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const logType = logTypes[Math.floor(Math.random() * logTypes.length)];
+    const message = messages[Math.floor(Math.random() * messages.length)];
+    const logLine = `[${timestamp}] ${logType.padEnd(5)} ${message}\n`;
+
+    if (monacoEditor) {
+      const currentValue = monacoEditor.getValue();
+      monacoEditor.setValue(currentValue + logLine);
+
+      // 自动滚动到底部
+      const lineCount = monacoEditor.getModel()?.getLineCount() || 0;
+      monacoEditor.revealLine(lineCount);
+    }
+
+    setTimeout(addLogLine, Math.random() * 3000 + 1000); // 1-4秒随机间隔
+  };
+
+  addLogLine();
 };
 
-const initTimelineChart = () => {
-  nextTick(() => {
-    if (!timelineChart.value) return;
-    // Here you would initialize a chart library like ECharts
-    timelineChart.value.innerHTML =
-      '<div style="text-align: center; padding: 40px; color: #999;">时间分布图表 (演示)</div>';
-  });
+const uploadLogFile = () => {
+  ElMessage.info("文件上传功能");
 };
 
-const searchInLogs = () => {
-  ElMessage.info("搜索功能开发中...");
+const generateSampleLog = () => {
+  if (monacoEditor) {
+    monacoEditor.setValue(sampleLogContent);
+    ElMessage.success("示例日志已生成");
+  }
 };
 
-const filterLogs = () => {
-  ElMessage.info("过滤功能开发中...");
+const showSearchDialog = () => {
+  ElMessage.info("高级搜索功能");
 };
 
 const exportLogs = () => {
-  ElMessage.info("导出功能开发中...");
+  ElMessage.info("导出分析功能");
 };
 
-const shareLogs = () => {
-  ElMessage.info("分享功能开发中...");
+const showSettings = () => {
+  ElMessage.info("设置功能");
 };
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
+onMounted(async () => {
+  await nextTick();
+  await initMonaco();
+});
 
-const getKeywordType = (level: string): string => {
-  switch (level) {
-    case "high":
-      return "danger";
-    case "medium":
-      return "warning";
-    case "low":
-      return "success";
-    default:
-      return "info";
+onBeforeUnmount(() => {
+  if (monacoEditor) {
+    monacoEditor.dispose();
   }
-};
-
-onMounted(() => {
-  nextTick(() => {
-    init();
-  });
+  isConnected.value = false;
 });
 </script>
 
 <style scoped lang="scss">
 .log-analysis-container {
-  position: relative;
   min-height: 100vh;
-  padding: 40px 20px;
-  overflow: hidden;
-  background: linear-gradient(135deg, #f8f2f5 0%, #fce4ec 100%);
-}
-
-.bg-decoration {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.04;
-  animation: float 12s ease-in-out infinite;
-}
-
-.decoration-1 {
-  top: 10%;
-  right: 20%;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, #f56c6c 0%, transparent 70%);
-  animation-delay: 0s;
-}
-
-.decoration-2 {
-  bottom: 15%;
-  left: 15%;
-  width: 150px;
-  height: 150px;
-  background: radial-gradient(circle, #409eff 0%, transparent 70%);
-  animation-delay: 4s;
-}
-
-.decoration-3 {
-  top: 50%;
-  left: 30%;
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, #67c23a 0%, transparent 70%);
-  animation-delay: 8s;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-
-  50% {
-    transform: translateY(-20px) rotate(180deg);
-  }
+  padding: 0;
+  background: linear-gradient(135deg, #fef2f2 0%, #fce7e7 100%);
 }
 
 .log-content {
-  position: relative;
-  z-index: 1;
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  padding: 40px;
 }
 
-.log-header {
-  margin-bottom: 50px;
-  text-align: center;
+.page-header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 32px;
+  margin-bottom: 40px;
+  background: white;
+  border: 1px solid #f0f0f0;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
 }
 
 .header-icon {
-  margin-bottom: 20px;
-  animation: glow 3s ease-in-out infinite alternate;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  color: white;
+  background: linear-gradient(135deg, #f56c6c 0%, #e6a23c 100%);
+  border-radius: 20px;
+  box-shadow: 0 8px 20px rgb(245 108 108 / 30%);
 }
 
-@keyframes glow {
-  from {
-    filter: drop-shadow(0 0 5px rgb(245 108 108 / 30%));
-    transform: scale(1);
-  }
-
-  to {
-    filter: drop-shadow(0 0 15px rgb(245 108 108 / 60%));
-    transform: scale(1.05);
-  }
+.header-text {
+  flex: 1;
 }
 
-.log-title {
-  margin: 0 0 15px;
-  font-size: 48px;
+.page-title {
+  margin: 0 0 8px;
+  font-size: 36px;
   font-weight: 700;
-  color: #2c3e50;
+  color: #1e293b;
   background: linear-gradient(135deg, #f56c6c 0%, #e6a23c 100%);
   background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.log-subtitle {
+.page-subtitle {
   margin: 0;
-  font-size: 18px;
-  line-height: 1.6;
-  color: #7f8c8d;
+  font-size: 16px;
+  color: #64748b;
 }
 
-.actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 25px;
+.stats-section {
   margin-bottom: 40px;
 }
 
-.action-card {
-  padding: 30px;
-  text-align: center;
-  background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgb(255 255 255 / 30%);
-  border-radius: 20px;
-  box-shadow: 0 15px 35px rgb(0 0 0 / 8%);
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.stat-card {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 20px;
+  background: white;
+  border: 1px solid #f0f0f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
   transition: all 0.3s ease;
 }
 
-.action-card:hover {
-  box-shadow: 0 25px 50px rgb(0 0 0 / 15%);
-  transform: translateY(-8px);
+.stat-card:hover {
+  box-shadow: 0 8px 30px rgb(0 0 0 / 12%);
+  transform: translateY(-2px);
 }
 
-.action-icon {
+.stat-icon {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 70px;
-  height: 70px;
-  margin: 0 auto 20px;
-  background: rgb(245 108 108 / 10%);
-  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  color: white;
+  border-radius: 12px;
+
+  &.error {
+    background: linear-gradient(135deg, #f56c6c, #ff4757);
+  }
+
+  &.warning {
+    background: linear-gradient(135deg, #e6a23c, #ffa726);
+  }
+
+  &.info {
+    background: linear-gradient(135deg, #409eff, #42a5f5);
+  }
+
+  &.success {
+    background: linear-gradient(135deg, #67c23a, #66bb6a);
+  }
 }
 
-.action-card h3 {
-  margin: 0 0 10px;
-  font-size: 22px;
-  font-weight: 600;
-  color: #2c3e50;
+.stat-content {
+  flex: 1;
 }
 
-.action-card p {
-  margin: 0 0 25px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #7f8c8d;
+.stat-number {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: #1e293b;
 }
 
-.upload-component {
-  width: 100%;
+.stat-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .editor-section {
   margin-bottom: 40px;
   overflow: hidden;
-  background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgb(255 255 255 / 30%);
+  background: white;
+  border: 1px solid #f0f0f0;
   border-radius: 20px;
-  box-shadow: 0 15px 35px rgb(0 0 0 / 8%);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
 }
 
 .editor-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 30px;
+  padding: 16px 24px;
   background: #f8f9fa;
   border-bottom: 1px solid #e9ecef;
 }
 
 .header-left {
   display: flex;
-  gap: 30px;
+  gap: 20px;
   align-items: center;
 }
 
 .editor-title {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  color: #2c3e50;
+  color: #1e293b;
 }
 
-.editor-stats {
+.connection-status {
   display: flex;
-  gap: 20px;
-}
-
-.stat-item {
-  font-size: 12px;
-  color: #909399;
+  align-items: center;
 }
 
 .header-right {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   align-items: center;
 }
 
 .editor-container {
   display: flex;
-  height: 600px;
+  height: 500px;
 }
 
-.monaco-editor {
+.editor-main {
   flex: 1;
+  min-width: 0;
+}
+
+.monaco-container {
+  width: 100%;
   height: 100%;
 }
 
 .analysis-panel {
   display: flex;
   flex-direction: column;
-  width: 350px;
+  width: 320px;
   background: #f8f9fa;
   border-left: 1px solid #e9ecef;
+  transition: all 0.3s ease;
+
+  &.hidden {
+    width: 0;
+    overflow: hidden;
+  }
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 15px 20px;
-  background: #fff;
+  padding: 12px 16px;
+  background: white;
   border-bottom: 1px solid #e9ecef;
-}
 
-.panel-header h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
+  h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+  }
 }
 
 .panel-content {
@@ -702,165 +705,236 @@ onMounted(() => {
 
 .analysis-tabs {
   height: 100%;
+
+  :deep(.el-tabs__header) {
+    padding: 0 16px;
+    margin: 0;
+  }
+
+  :deep(.el-tabs__content) {
+    height: calc(100% - 40px);
+    padding: 0;
+  }
+
+  :deep(.el-tab-pane) {
+    height: 100%;
+    padding: 16px;
+  }
 }
 
-.analysis-section {
+.stats-content {
+  padding: 0;
+}
+
+.metric-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 15px;
-  padding: 20px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 
 .metric-card {
-  padding: 20px;
+  padding: 12px;
   text-align: center;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 5%);
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 5%);
 }
 
 .metric-number {
-  font-size: 32px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 1;
-  color: #2c3e50;
+  color: #1e293b;
 }
 
 .metric-label {
-  margin-top: 8px;
-  font-size: 14px;
-  color: #7f8c8d;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
 }
 
 .chart-container {
-  height: 300px;
-  padding: 20px;
+  height: 200px;
+  padding: 16px;
 }
 
 .chart {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: #fff;
+  background: white;
+  border: 2px dashed #e5e7eb;
   border-radius: 8px;
+}
+
+.chart-placeholder {
+  color: #9ca3af;
+  text-align: center;
+
+  p {
+    margin: 8px 0 0;
+    font-size: 14px;
+  }
 }
 
 .keywords-section {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 20px;
+  gap: 8px;
+  padding: 0;
 }
 
 .keyword-tag {
-  margin: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  background: #e5e7eb;
+  border-radius: 4px;
 }
 
 .tools-section {
-  padding: 30px;
-  background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgb(255 255 255 / 30%);
+  padding: 32px;
+  background: white;
+  border: 1px solid #f0f0f0;
   border-radius: 20px;
-  box-shadow: 0 15px 35px rgb(0 0 0 / 8%);
-}
-
-.tools-header h3 {
-  margin: 0 0 25px;
-  font-size: 24px;
-  font-weight: 600;
-  color: #2c3e50;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
 }
 
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 20px;
 }
 
 .tool-card {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
   align-items: center;
-  padding: 25px;
+  padding: 24px;
+  text-align: center;
   cursor: pointer;
   background: #f8f9fa;
   border: 1px solid #e9ecef;
-  border-radius: 12px;
+  border-radius: 16px;
   transition: all 0.3s ease;
 }
 
 .tool-card:hover {
-  background: #fff;
+  background: white;
   border-color: #f56c6c;
-  box-shadow: 0 10px 25px rgb(245 108 108 / 15%);
-  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgb(245 108 108 / 15%);
+  transform: translateY(-2px);
 }
 
-.tool-card span {
-  font-size: 14px;
-  font-weight: 500;
-  color: #2c3e50;
+.tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  background: rgb(245 108 108 / 10%);
+  border-radius: 16px;
+}
+
+.tool-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.tool-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #64748b;
 }
 
 /* 响应式设计 */
 @media (width <= 1200px) {
+  .log-content {
+    padding: 30px;
+  }
+
   .editor-container {
     flex-direction: column;
+    height: auto;
+  }
+
+  .editor-main {
+    height: 400px;
   }
 
   .analysis-panel {
     width: 100%;
-    height: 300px;
+    height: 250px;
     border-top: 1px solid #e9ecef;
     border-left: none;
+
+    &.hidden {
+      width: 100%;
+      height: 0;
+    }
   }
 }
 
 @media (width <= 768px) {
-  .log-analysis-container {
-    padding: 20px 15px;
+  .log-content {
+    padding: 20px;
   }
 
-  .log-title {
-    font-size: 32px;
-  }
-
-  .actions-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .editor-header {
+  .page-header {
     flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
+    gap: 16px;
+    text-align: center;
   }
 
-  .header-left {
-    flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
+  .page-title {
+    font-size: 28px;
   }
 
-  .editor-stats {
-    justify-content: space-between;
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
   }
 
   .tools-grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .editor-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .header-right {
+    justify-content: space-between;
+    width: 100%;
   }
 }
 
-/* Element Plus 覆盖样式 */
-:deep(.el-tabs__content) {
-  height: calc(100% - 40px);
-  overflow: auto;
-}
+@media (width <= 480px) {
+  .page-header {
+    padding: 20px;
+  }
 
-:deep(.el-tab-pane) {
-  height: 100%;
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-section {
+    padding: 20px;
+  }
 }
 </style>

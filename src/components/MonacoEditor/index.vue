@@ -59,6 +59,7 @@ const initMonaco = () => {
 
 const addPluginContextMenuActions = () => {
   if (!editor) return;
+  pluginStore.loadPlugins();
   const plugins = pluginStore.getPlugins;
   plugins.forEach((plugin, index) => {
     editor!.addAction({
@@ -119,18 +120,6 @@ watch(
       editor.setValue(newValue);
     }
   }
-);
-
-// 监听插件变化，更新右键菜单
-watch(
-  () => pluginStore.getPlugins,
-  () => {
-    if (editor) {
-      // 清除现有的插件菜单项（Monaco Editor不提供直接清除方法，所以重新初始化）
-      addPluginContextMenuActions();
-    }
-  },
-  { deep: true }
 );
 
 onMounted(() => {

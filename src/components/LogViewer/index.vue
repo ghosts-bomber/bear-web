@@ -64,7 +64,6 @@ import { ref, onMounted, onBeforeUnmount, watch } from "vue";
 import type { Ref } from "vue";
 import MonacoEditor from "@/components/MonacoEditor/index.vue";
 import RichTextPanel from "@/components/RichTextPanel/index.vue";
-import { usePluginStore } from "@/store/modules/plugin";
 import type { EditorInstance, Plugin, PluginAction, PluginResult } from "@/types/plugin";
 import { ChatDotSquare, Close, Delete } from "@element-plus/icons-vue";
 
@@ -81,7 +80,6 @@ const monacoEditorRef: Ref<InstanceType<typeof MonacoEditor> | null> = ref(null)
 const richTextPanelRef: Ref<InstanceType<typeof RichTextPanel> | null> = ref(null);
 const logViewerRef: Ref<HTMLElement | null> = ref(null);
 const editorContent = ref<string>(props.content);
-const pluginStore = usePluginStore();
 
 // 面板大小和显示状态
 const showRightPanel = ref(true);
@@ -202,7 +200,6 @@ const stopResize = () => {
 
 // Initialize plugins on component mount
 onMounted(async () => {
-  pluginStore.loadPlugins();
   // 初始化面板宽度
   setTimeout(updatePanelWidths, 100);
   window.addEventListener("resize", debouncedUpdatePanelWidths);

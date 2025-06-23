@@ -1,24 +1,20 @@
 <template>
   <div class="aip-search-container">
-    <!-- Background decorations -->
-    <div class="bg-decoration decoration-1" />
-    <div class="bg-decoration decoration-2" />
-
     <div class="search-content">
       <!-- Header Section -->
       <div class="search-header">
         <div class="header-icon">
-          <el-icon size="60" color="#667eea">
+          <el-icon size="48" color="#667eea">
             <Search />
           </el-icon>
         </div>
-        <h1 class="search-title">AIP/GC 智能搜索</h1>
-        <p class="search-subtitle">输入 JIRA 号快速定位问题，支持 AIP、GC、DC 类型查询</p>
+        <h1 class="search-title">JIRA问题排查</h1>
+        <p class="search-subtitle">输入 JIRA 号快速定位问题</p>
       </div>
 
-      <!-- Search Section -->
-      <div class="search-section">
-        <div class="search-wrapper">
+      <!-- Main Search Area -->
+      <div class="main-search-section">
+        <div class="search-form">
           <el-input
             v-model="input"
             placeholder="输入 JIRA 号码进行搜索..."
@@ -27,12 +23,7 @@
             @keyup.enter="searchHandle"
           >
             <template #prepend>
-              <el-select
-                v-model="select"
-                placeholder="类型"
-                class="search-select"
-                popper-class="search-select-dropdown"
-              >
+              <el-select v-model="select" placeholder="类型" class="search-select">
                 <el-option
                   v-for="item in select_data"
                   :key="item.val"
@@ -60,15 +51,13 @@
           </el-input>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-          <div class="action-label">快速操作：</div>
+        <!-- Quick Type Buttons -->
+        <div class="quick-type-buttons">
           <el-button
             v-for="item in select_data"
             :key="item.val"
-            size="small"
             :type="select === item.val ? 'primary' : 'default'"
-            class="quick-btn"
+            class="type-btn"
             @click="selectType(item.val)"
           >
             {{ item.key }}
@@ -76,60 +65,24 @@
         </div>
       </div>
 
-      <!-- Recent Searches -->
-      <div v-if="recentSearches.length > 0" class="recent-section">
-        <h3 class="section-title">
-          <el-icon size="18" color="#909399"><Clock /></el-icon>
-          最近搜索
-        </h3>
-        <div class="recent-items">
-          <div
-            v-for="(search, index) in recentSearches"
-            :key="index"
-            class="recent-item"
-            @click="quickSearch(search)"
-          >
-            <div class="recent-content">
-              <span class="recent-type">{{ search.type }}</span>
+      <!-- Content Grid -->
+      <div class="content-grid">
+        <!-- Recent Searches -->
+        <div v-if="recentSearches.length > 0" class="recent-searches-card">
+          <div class="card-header">
+            <el-icon size="20" color="#409eff"><Clock /></el-icon>
+            <h3>最近搜索</h3>
+          </div>
+          <div class="recent-list">
+            <div
+              v-for="(search, index) in recentSearches.slice(0, 6)"
+              :key="index"
+              class="recent-item"
+              @click="quickSearch(search)"
+            >
+              <el-tag :type="getTypeTagType(search.type)" size="small">{{ search.type }}</el-tag>
               <span class="recent-code">{{ search.code }}</span>
-            </div>
-            <el-icon size="14" color="#c0c4cc"><ArrowRight /></el-icon>
-          </div>
-        </div>
-      </div>
-
-      <!-- Help Section -->
-      <div class="help-section">
-        <h3 class="section-title">
-          <el-icon size="18" color="#909399"><QuestionFilled /></el-icon>
-          使用说明
-        </h3>
-        <div class="help-cards">
-          <div class="help-card">
-            <div class="help-icon">
-              <el-icon size="24" color="#409eff"><Document /></el-icon>
-            </div>
-            <div class="help-content">
-              <h4>AIP 分析</h4>
-              <p>自动故障诊断分析</p>
-            </div>
-          </div>
-          <div class="help-card">
-            <div class="help-icon">
-              <el-icon size="24" color="#67c23a"><Cpu /></el-icon>
-            </div>
-            <div class="help-content">
-              <h4>GC 分析</h4>
-              <p>垃圾回收性能分析</p>
-            </div>
-          </div>
-          <div class="help-card">
-            <div class="help-icon">
-              <el-icon size="24" color="#e6a23c"><DataBoard /></el-icon>
-            </div>
-            <div class="help-content">
-              <h4>DC 分析</h4>
-              <p>数据中心状态分析</p>
+              <el-icon size="12" color="#c0c4cc"><ArrowRight /></el-icon>
             </div>
           </div>
         </div>
@@ -139,16 +92,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import {
   Search,
   Clock,
   QuestionFilled,
   ArrowRight,
-  Document,
-  Cpu,
   DataBoard,
+  InfoFilled,
 } from "@element-plus/icons-vue";
 import PTApi from "@/api/platform";
 import { useAipStore } from "@/store";
@@ -165,7 +117,7 @@ const isSearching = ref(false);
 const aipStore = useAipStore();
 const router = useRouter();
 
-// 最近搜索记录（从localStorage获取）
+// 最近搜索记录
 const recentSearches = ref<Array<{ type: string; code: string }>>([]);
 
 if (select_data.length > 0) {
@@ -182,6 +134,16 @@ const getTypeDescription = (type: string) => {
   return descriptions[type] || "";
 };
 
+// 获取类型标签类型
+const getTypeTagType = (type: string) => {
+  const tagTypes: Record<string, string> = {
+    AIP: "success",
+    GC: "warning",
+    DC: "info",
+  };
+  return tagTypes[type] || "default";
+};
+
 // 选择类型
 const selectType = (type: string) => {
   select.value = type;
@@ -195,18 +157,15 @@ const saveSearchRecord = (type: string, code: string) => {
   );
 
   if (existingIndex > -1) {
-    // 如果已存在，移到最前面
     recentSearches.value.splice(existingIndex, 1);
   }
 
   recentSearches.value.unshift(searchRecord);
 
-  // 最多保留10条记录
-  if (recentSearches.value.length > 10) {
-    recentSearches.value = recentSearches.value.slice(0, 10);
+  if (recentSearches.value.length > 20) {
+    recentSearches.value = recentSearches.value.slice(0, 20);
   }
 
-  // 保存到localStorage
   localStorage.setItem("aip-recent-searches", JSON.stringify(recentSearches.value));
 };
 
@@ -233,11 +192,10 @@ async function searchHandle() {
     const data = await PTApi.searchApi(aipcode, select.value);
     console.log("搜索结果:", data);
 
-    if (data.data["contents"].length > 0) {
+    if (data["contents"].length > 0) {
       console.log("添加信息:", aipcode);
-      aipStore.addAipInfo(aipcode, data.data["contents"][0]);
+      aipStore.addAipInfo(aipcode, data["contents"][0]);
 
-      // 保存搜索记录
       saveSearchRecord(select.value, aipcode);
 
       ElMessage.success("搜索成功！");
@@ -268,82 +226,32 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .aip-search-container {
-  position: relative;
   min-height: 100vh;
-  padding: 40px 20px;
-  overflow: hidden;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-}
-
-.bg-decoration {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.05;
-  animation: float 8s ease-in-out infinite;
-}
-
-.decoration-1 {
-  top: 10%;
-  right: 10%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, #667eea 0%, transparent 70%);
-  animation-delay: 0s;
-}
-
-.decoration-2 {
-  bottom: 10%;
-  left: 10%;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle, #764ba2 0%, transparent 70%);
-  animation-delay: 4s;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-
-  50% {
-    transform: translateY(-30px) rotate(180deg);
-  }
+  padding: 0;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
 }
 
 .search-content {
-  position: relative;
-  z-index: 1;
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  padding: 40px;
 }
 
 .search-header {
-  margin-bottom: 50px;
+  padding: 0 20px;
+  margin-bottom: 60px;
   text-align: center;
 }
 
 .header-icon {
   margin-bottom: 20px;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-
-  50% {
-    transform: scale(1.1);
-  }
 }
 
 .search-title {
-  margin: 0 0 15px;
-  font-size: 48px;
+  margin: 0 0 12px;
+  font-size: 42px;
   font-weight: 700;
-  color: #2c3e50;
+  color: #1e293b;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   background-clip: text;
   background-clip: text;
@@ -353,26 +261,22 @@ onMounted(() => {
 .search-subtitle {
   margin: 0;
   font-size: 18px;
-  line-height: 1.6;
-  color: #7f8c8d;
+  color: #64748b;
 }
 
-.search-section {
-  padding: 40px;
-  margin-bottom: 40px;
-  background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgb(255 255 255 / 30%);
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgb(0 0 0 / 10%);
+.main-search-section {
+  max-width: 800px;
+  margin: 0 auto 60px;
+  text-align: center;
 }
 
-.search-wrapper {
+.search-form {
   margin-bottom: 30px;
 }
 
 .search-input {
   width: 100%;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
 }
 
 .search-select {
@@ -386,157 +290,241 @@ onMounted(() => {
 }
 
 .option-label {
-  font-weight: 500;
-  color: #2c3e50;
+  font-weight: 600;
+  color: #1e293b;
 }
 
 .option-desc {
   font-size: 12px;
-  color: #909399;
+  color: #64748b;
 }
 
 .search-button {
-  min-width: 100px;
+  min-width: 120px;
+  font-weight: 600;
 }
 
-.quick-actions {
+.quick-type-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 15px;
-  align-items: center;
+  gap: 12px;
+  justify-content: center;
 }
 
-.action-label {
-  font-size: 14px;
+.type-btn {
+  min-width: 80px;
   font-weight: 500;
-  color: #909399;
+  border-radius: 20px;
 }
 
-.quick-btn {
-  border-radius: 20px;
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 30px;
+  margin-bottom: 40px;
+}
+
+.recent-searches-card,
+.type-info-card,
+.stats-card {
+  padding: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
   transition: all 0.3s ease;
 }
 
-.quick-btn:hover {
+.recent-searches-card:hover,
+.type-info-card:hover,
+.stats-card:hover {
+  box-shadow: 0 8px 30px rgb(0 0 0 / 12%);
   transform: translateY(-2px);
 }
 
-.recent-section,
-.help-section {
-  padding: 30px;
-  margin-bottom: 30px;
-  background: rgb(255 255 255 / 95%);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgb(255 255 255 / 30%);
-  border-radius: 20px;
-  box-shadow: 0 15px 30px rgb(0 0 0 / 8%);
-}
-
-.section-title {
+.card-header {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  margin: 0 0 20px;
-  font-size: 20px;
-  font-weight: 600;
-  color: #2c3e50;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.recent-items {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 15px;
+.card-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .recent-item {
   display: flex;
+  gap: 12px;
   align-items: center;
-  justify-content: space-between;
-  padding: 15px 20px;
+  padding: 12px 16px;
   cursor: pointer;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
-  transition: all 0.3s ease;
+  background: #f8fafc;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .recent-item:hover {
-  background: #fff;
-  border-color: #667eea;
-  box-shadow: 0 8px 20px rgb(102 126 234 / 15%);
-  transform: translateY(-2px);
-}
-
-.recent-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.recent-type {
-  font-size: 12px;
-  font-weight: 500;
-  color: #909399;
+  background: #e2e8f0;
+  transform: translateX(4px);
 }
 
 .recent-code {
+  flex: 1;
   font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-weight: 500;
+  color: #374151;
+  text-align: left;
 }
 
-.help-cards {
+.type-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.type-info-item {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.type-badge {
+  min-width: 50px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  border-radius: 8px;
+
+  &.aip {
+    background: linear-gradient(135deg, #10b981, #059669);
+  }
+
+  &.gc {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+  }
+
+  &.dc {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+  }
+}
+
+.type-description {
+  flex: 1;
+
+  strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #64748b;
+  }
+}
+
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.stat-item {
+  padding: 16px 8px;
+  text-align: center;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: #1e293b;
+}
+
+.stat-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tips-section {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.tips-card {
+  display: flex;
   gap: 20px;
+  align-items: flex-start;
+  padding: 24px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgb(0 0 0 / 8%);
 }
 
-.help-card {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  padding: 20px;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
+.tips-content {
+  flex: 1;
 
-.help-card:hover {
-  background: #fff;
-  border-color: #667eea;
-  box-shadow: 0 8px 20px rgb(102 126 234 / 15%);
-  transform: translateY(-2px);
-}
+  h4 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e293b;
+  }
 
-.help-icon {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 50px;
-  height: 50px;
-  background: rgb(102 126 234 / 10%);
-  border-radius: 12px;
-}
+  ul {
+    padding-left: 16px;
+    margin: 0;
 
-.help-content h4 {
-  margin: 0 0 5px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-}
+    li {
+      margin-bottom: 6px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #64748b;
 
-.help-content p {
-  margin: 0;
-  font-size: 14px;
-  color: #7f8c8d;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
 }
 
 /* 响应式设计 */
+@media (width <= 1200px) {
+  .search-content {
+    padding: 30px;
+  }
+
+  .content-grid {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+  }
+}
+
 @media (width <= 768px) {
-  .aip-search-container {
-    padding: 20px 15px;
+  .search-content {
+    padding: 20px;
   }
 
   .search-title {
@@ -547,76 +535,62 @@ onMounted(() => {
     font-size: 16px;
   }
 
-  .search-section {
-    padding: 25px 20px;
-  }
-
-  .recent-items {
+  .content-grid {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
-  .help-cards {
+  .stats-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
-  .quick-actions {
+  .quick-type-buttons {
+    justify-content: center;
+  }
+
+  .tips-card {
     flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
+    text-align: center;
   }
 }
 
 /* Element Plus 样式覆盖 */
 :deep(.el-input-group__prepend) {
-  background: #fff;
-  border-color: #e1e6ef;
-  border-radius: 12px 0 0 12px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-right: none;
 }
 
 :deep(.el-input-group__append) {
-  padding: 0;
-  background: #fff;
-  border-color: #e1e6ef;
-  border-radius: 0 12px 12px 0;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-left: none;
 }
 
 :deep(.el-input__wrapper) {
-  border-radius: 0;
-  box-shadow: 0 0 0 1px #e1e6ef inset;
-  transition: all 0.3s ease;
-}
-
-:deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #667eea inset;
+  border: 1px solid #d1d5db;
+  border-right: none;
+  border-left: none;
+  box-shadow: none;
 }
 
 :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #667eea inset;
+  box-shadow: none;
 }
 
 :deep(.el-input__inner) {
   height: 50px;
-  padding: 0 20px;
   font-size: 16px;
 }
 
-:deep(.el-select) {
-  width: 100%;
-}
-
-:deep(.el-select .el-input__inner) {
-  background: transparent;
-  border: none;
-}
-
 :deep(.search-button) {
-  height: 50px;
-  font-weight: 500;
+  font-weight: 600;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
 }
 
 :deep(.search-button:hover) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
 }
 </style>
