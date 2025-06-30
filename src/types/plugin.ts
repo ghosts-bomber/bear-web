@@ -15,7 +15,7 @@ export interface Plugin {
   id: string;
   name: string;
   description: string;
-  process: (content: string) => Promise<string | PluginResult>;
+  process: (content: string) => Promise<string | PluginResult | PluginResult[]>;
 }
 
 export interface PluginAction {

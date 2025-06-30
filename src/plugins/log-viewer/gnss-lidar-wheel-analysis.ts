@@ -16,11 +16,6 @@ interface TimeRange {
   end: number;
 }
 
-interface AnalysisResult {
-  title: string;
-  content: string;
-  hasData: boolean;
-}
 interface WheelSpeed {
   time: string;
   fl: number;
@@ -33,7 +28,7 @@ const plugin: Plugin = {
   id: "gnss-lidar-wheel-analysis",
   name: "GNSS雷达轮速分析",
   description: "分析GNSS、雷达频率、轮速相关的日志数据并生成可视化图表",
-  async process(content: string): Promise<PluginResult> {
+  async process(content: string): Promise<PluginResult | PluginResult[]> {
     try {
       const lines = content.split("\n").filter((line) => line.trim());
 
@@ -61,25 +56,7 @@ const plugin: Plugin = {
       // 生成分析结果
       const results = generateAnalysis(categorizedLogs, timeRange);
 
-      // 构建HTML输出
-      const html = buildAnalysisReport(results, timeRange, lines.length);
-
-      // 生成图表
-      const chartOption = generateComprehensiveChart(categorizedLogs, timeRange);
-
-      const summary = generateSummary(results);
-
-      return {
-        type: "mixed",
-        summary,
-        html,
-        chart: chartOption
-          ? {
-              type: "echarts",
-              option: chartOption,
-            }
-          : undefined,
-      };
+      return results;
     } catch (error) {
       console.error("GNSS雷达轮速分析出错:", error);
       return {
@@ -125,15 +102,27 @@ function timeStringToSeconds(timeStr: string): number {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-function formatTime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600)
-    .toString()
-    .padStart(2, "0");
-  const mins = Math.floor((seconds % 3600) / 60)
-    .toString()
-    .padStart(2, "0");
-  const secs = (seconds % 60).toString().padStart(2, "0");
-  return `${hours}:${mins}:${secs}`;
+// 将时间字符串转换为时间戳（毫秒）
+function timeStringToTimestamp(timeStr: string): number {
+  // 解析时间字符串，如 "16:14:24.967221"
+  const [timePart, microseconds = "0"] = timeStr.split(".");
+  const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+  // 创建今天的日期，然后设置时间
+  const today = new Date();
+  today.setHours(hours, minutes, seconds, parseInt(microseconds.substr(0, 3))); // 只取前3位作为毫秒
+
+  return today.getTime();
+}
+
+// 将秒数转换为时间戳（毫秒）
+function secondsToTimestamp(seconds: number): number {
+  const today = new Date();
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  today.setHours(hours, minutes, secs, 0);
+  return today.getTime();
 }
 
 function categorizeLogs(lines: string[]): LogCategory {
@@ -170,242 +159,360 @@ function categorizeLogs(lines: string[]): LogCategory {
   return categories;
 }
 
-function generateAnalysis(logs: LogCategory, timeRange: TimeRange): AnalysisResult[] {
-  const results: AnalysisResult[] = [];
-
-  // GNSS分析
-  if (logs.gnssImu.length > 0) {
-    results.push(analyzeGnss(logs.gnssImu, timeRange));
-  }
+function generateAnalysis(logs: LogCategory, timeRange: TimeRange): PluginResult[] {
+  const results: PluginResult[] = [];
 
   // 雷达FPS分析
   if (logs.lidarFps.length > 0) {
-    results.push(analyzeLidarFps(logs.lidarFps));
-  }
-
-  // NAN比率分析
-  if (logs.lidarNanRatio.length > 0) {
-    results.push(analyzeLidarNanRatio(logs.lidarNanRatio));
+    results.push(...analyzeLidarFps(logs.lidarFps, timeRange));
   }
 
   // 轮速分析
   if (logs.wheelSpeed.length > 0) {
-    results.push(analyzeWheelSpeed(logs.wheelSpeed));
+    results.push(analyzeWheelSpeed(logs.wheelSpeed, timeRange));
   }
 
   // Orin接收MPU数据分析
   if (logs.orinRecvMpu.length > 0) {
-    results.push(analyzeOrinRecvMpu(logs.orinRecvMpu));
+    results.push(analyzeOrinRecvMpu(logs.orinRecvMpu, timeRange));
   }
 
   return results;
 }
 
-function analyzeGnss(lines: string[], timeRange: TimeRange): AnalysisResult {
-  const duration = timeRange.end - timeRange.begin;
-  const gnssLostFrame = new Array(duration + 1).fill(0);
-  const gnssLatency = new Array(duration + 1).fill(0);
-  const imuLatency = new Array(duration + 1).fill(0);
+function analyzeLidarFps(lines: string[], timeRange: TimeRange): PluginResult[] {
+  const lidarData: Array<{
+    systemTime: string;
+    lidarIndex: number;
+    systemTimestamp: number;
+    pointcloudTimestamp: number;
+    pointSize: number;
+    nanRatio: number;
+    timeDiff: number; // 时间戳差值，单位：ms
+  }> = [];
 
-  let gnssLatencySum = 0;
-  let gnssLatencyCnt = 0;
-  let imuLatencySum = 0;
-  let imuLatencyCnt = 0;
-
-  for (const line of lines) {
-    const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) continue;
-
-    const time = timeStringToSeconds(timeMatch[1]);
-    const index = time - timeRange.begin;
-
-    if (index < 0 || index >= gnssLostFrame.length) continue;
-
-    if (line.includes("imu time diff warning")) {
-      imuLatency[index] += 1;
-      imuLatencyCnt += 1;
-      const latencyMatch = line.match(/[\d.]+$/);
-      if (latencyMatch) {
-        imuLatencySum += parseFloat(latencyMatch[0]);
-      }
-    } else if (line.includes("lost frame")) {
-      gnssLostFrame[index] += 1;
-    } else if (line.includes("not synchronized")) {
-      gnssLatency[index] += 1;
-      gnssLatencyCnt += 1;
-      const latencyMatch = line.match(/[\d.]+$/);
-      if (latencyMatch) {
-        gnssLatencySum += parseFloat(latencyMatch[0]);
-      }
-    }
-  }
-
-  const lostPercentage = (
-    (100 * gnssLostFrame.reduce((a, b) => a + b, 0)) /
-    (15 * gnssLostFrame.length)
-  ).toFixed(2);
-  const latencyPercentage = (
-    (100 * gnssLatency.reduce((a, b) => a + b, 0)) /
-    (15 * gnssLatency.length)
-  ).toFixed(2);
-  const avgGnssLatency =
-    gnssLatencyCnt > 0 ? ((1000 * gnssLatencySum) / gnssLatencyCnt).toFixed(0) : "0";
-  const imuLatencyPercentage = (
-    (100 * imuLatency.reduce((a, b) => a + b, 0)) /
-    (100 * imuLatency.length)
-  ).toFixed(2);
-  const avgImuLatency =
-    imuLatencyCnt > 0 ? ((1000 * imuLatencySum) / imuLatencyCnt).toFixed(0) : "0";
-
-  const content = `
-    <div class="stats-grid">
-      <div class="stat-item">
-        <div class="stat-label">卫星数据丢失率</div>
-        <div class="stat-value">${lostPercentage}%</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">卫星延迟超限率</div>
-        <div class="stat-value">${latencyPercentage}%</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">卫星平均延迟</div>
-        <div class="stat-value">${avgGnssLatency}ms</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">IMU延迟超限率</div>
-        <div class="stat-value">${imuLatencyPercentage}%</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">IMU平均延迟</div>
-        <div class="stat-value">${avgImuLatency}ms</div>
-      </div>
-    </div>
-  `;
-
-  return {
-    title: "🛰️ GNSS/IMU 数据分析",
-    content,
-    hasData: true,
-  };
-}
-
-function analyzeLidarFps(lines: string[]): AnalysisResult {
-  const fpsDict: { [key: number]: { count: number; latencies: number[] } } = {};
+  // 更精确的正则表达式来匹配完整的日志格式
+  const logRegex =
+    /(\d{2}:\d{2}:\d{2}\.\d{6}).*?publish (\d+) pointcloud.*?system time is ([\d\.]+).*?timestamp is ([\d\.]+).*?pointsize is (\d+).*?nan ratio is ([\d\.]+)/;
 
   for (const line of lines) {
-    const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) continue;
+    const match = line.match(logRegex);
+    if (!match) continue;
 
-    const time = timeStringToSeconds(timeMatch[1]);
+    const systemTime = match[1];
+    const lidarIndex = parseInt(match[2]);
+    const systemTimestamp = parseFloat(match[3]);
+    const pointcloudTimestamp = parseFloat(match[4]);
+    const pointSize = parseInt(match[5]);
+    const nanRatio = parseFloat(match[6]);
 
-    const sysTimeMatch = line.match(/system\s+time\s+is\s+([\d.]+)/);
-    const pclTimeMatch = line.match(/timestamp\s+is\s+([\d.]+)/);
+    // 计算时间戳差值，转换为毫秒
+    const timeDiff = (systemTimestamp - pointcloudTimestamp) * 1000;
 
-    if (sysTimeMatch && pclTimeMatch) {
-      const sysTime = parseFloat(sysTimeMatch[1]);
-      const pclTime = parseFloat(pclTimeMatch[1]);
-      const latency = sysTime - pclTime;
-
-      if (!fpsDict[time]) {
-        fpsDict[time] = { count: 0, latencies: [] };
-      }
-      fpsDict[time].count += 1;
-      fpsDict[time].latencies.push(latency);
-    }
+    lidarData.push({
+      systemTime,
+      lidarIndex,
+      systemTimestamp,
+      pointcloudTimestamp,
+      pointSize,
+      nanRatio,
+      timeDiff,
+    });
   }
 
-  const times = Object.keys(fpsDict).map(Number).sort();
-  const frameRates = times.map((t) => fpsDict[t].count);
-  const avgLatencies = times.map((t) => {
-    const latencies = fpsDict[t].latencies;
-    return latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : 0;
+  if (lidarData.length === 0) {
+    return [
+      {
+        type: "html",
+        html: '<div class="no-data">📡 雷达数据分析：未找到匹配的日志行</div>',
+      },
+    ];
+  }
+
+  // 按lidar编号分组数据
+  const lidarGroups = new Map<number, typeof lidarData>();
+  lidarData.forEach((data) => {
+    if (!lidarGroups.has(data.lidarIndex)) {
+      lidarGroups.set(data.lidarIndex, []);
+    }
+    const group = lidarGroups.get(data.lidarIndex);
+    if (group) {
+      group.push(data);
+    }
   });
 
-  const avgFrameRate =
-    frameRates.length > 0
-      ? (frameRates.reduce((a, b) => a + b, 0) / frameRates.length).toFixed(2)
-      : "0";
-  const avgLatency =
-    avgLatencies.length > 0
-      ? ((avgLatencies.reduce((a, b) => a + b, 0) / avgLatencies.length) * 1000).toFixed(2)
-      : "0";
+  const results: PluginResult[] = [];
 
-  const content = `
-    <div class="stats-grid">
-      <div class="stat-item">
-        <div class="stat-label">平均帧率</div>
-        <div class="stat-value">${avgFrameRate} fps</div>
-      </div>
-      <div class="stat-item">
-        <div class="stat-label">平均延迟</div>
-        <div class="stat-value">${avgLatency} ms</div>
-      </div>
+  // 第一个图表：点云数和NAN比例（按lidar编号分类）
+  const pointSizeSeries: any[] = [];
+  const nanRatioSeries: any[] = [];
+  const colors = [
+    "#FF6B6B", // 红色
+    "#4ECDC4", // 青色
+    "#45B7D1", // 蓝色
+    "#F9CA24", // 黄色
+    "#9B59B6", // 紫色
+    "#E74C3C", // 深红色
+    "#2ECC71", // 绿色
+    "#E67E22", // 橙色
+    "#3498DB", // 天蓝色
+    "#8E44AD", // 深紫色
+  ];
+
+  lidarGroups.forEach((data, lidarIndex) => {
+    const color = colors[lidarIndex % colors.length];
+
+    // 将所有数据点直接使用，以系统时间为x轴，转换为时间戳，但保留原始时间字符串
+    const pointSizeData = data.map((d) => ({
+      value: [timeStringToTimestamp(d.systemTime), d.pointSize],
+      originalTime: d.systemTime,
+      lidarIndex: d.lidarIndex,
+    }));
+    const nanRatioData = data.map((d) => ({
+      value: [timeStringToTimestamp(d.systemTime), d.nanRatio],
+      originalTime: d.systemTime,
+      lidarIndex: d.lidarIndex,
+    }));
+
+    pointSizeSeries.push({
+      name: `Lidar ${lidarIndex} 点云数`,
+      type: "scatter",
+      data: pointSizeData,
+      itemStyle: { color },
+      symbol: "circle",
+      symbolSize: 6,
+    });
+
+    nanRatioSeries.push({
+      name: `Lidar ${lidarIndex} NAN比例`,
+      type: "scatter",
+      yAxisIndex: 1,
+      data: nanRatioData,
+      itemStyle: { color },
+      symbol: "triangle",
+      symbolSize: 6,
+    });
+  });
+
+  const chart1Option = {
+    title: {
+      text: "雷达点云数和NAN比例分析",
+      left: "center",
+      textStyle: { fontSize: 14, fontWeight: "bold" },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross" },
+      formatter: (params: any) => {
+        // 获取第一个有效数据点的原始时间
+        let originalTime = "";
+        for (const p of params) {
+          if (p.data && p.data.originalTime) {
+            originalTime = p.data.originalTime;
+            break;
+          }
+        }
+        let res = `<div style="font-weight: bold; margin-bottom: 5px;">🕒 系统时间: ${originalTime}</div>`;
+        params.forEach((p: any) => {
+          if (p.value && p.value.length >= 2) {
+            const unit = p.seriesName.includes("点云数") ? " 个点" : "";
+            const value = p.seriesName.includes("NAN比例")
+              ? (p.value[1] * 100).toFixed(4) + "%"
+              : p.value[1];
+            res += `<div style="margin: 2px 0;">`;
+            res += `<span style="display: inline-block; width: 10px; height: 10px; background-color: ${p.color}; margin-right: 5px; border-radius: 50%;"></span>`;
+            res += `${p.seriesName}: <span style="font-weight: bold;">${value}${unit}</span>`;
+            res += `</div>`;
+          }
+        });
+        return res;
+      },
+    },
+    legend: {
+      data: [...pointSizeSeries.map((s) => s.name), ...nanRatioSeries.map((s) => s.name)],
+      top: 30,
+      textStyle: { fontSize: 11 },
+    },
+    grid: { left: "8%", right: "8%", bottom: "20%", top: "15%", containLabel: true },
+    xAxis: {
+      type: "time",
+      axisLabel: {
+        rotate: 45,
+        fontSize: 9,
+        formatter: (value: number) => {
+          const date = new Date(value);
+          return date.toTimeString().split(" ")[0]; // 显示 HH:MM:SS
+        },
+      },
+      min: secondsToTimestamp(timeRange.begin),
+      max: secondsToTimestamp(timeRange.end),
+    },
+    yAxis: [
+      {
+        type: "value",
+        name: "点云数",
+        position: "left",
+        axisLabel: { formatter: "{value}" },
+        splitLine: { lineStyle: { type: "dashed" } },
+      },
+      {
+        type: "value",
+        name: "NAN比例",
+        position: "right",
+        axisLabel: { formatter: (v: number) => (v * 100).toFixed(2) + "%" },
+        splitLine: { show: false },
+      },
+    ],
+    series: [...pointSizeSeries, ...nanRatioSeries],
+    dataZoom: [
+      { type: "slider", xAxisIndex: 0, start: 0, end: 100, height: 20, bottom: 10 },
+      { type: "inside", xAxisIndex: 0 },
+    ],
+  };
+
+  results.push({
+    type: "mixed",
+    summary: "雷达点云数和NAN比例分析",
+    html: `<div class="stats-grid">
       <div class="stat-item">
         <div class="stat-label">数据点数量</div>
-        <div class="stat-value">${frameRates.length}</div>
+        <div class="stat-value">${lidarData.length}</div>
       </div>
-    </div>
-  `;
+    </div>`,
+    chart: {
+      type: "echarts",
+      option: chart1Option,
+    },
+  });
 
-  return {
-    title: "📡 雷达 FPS 和延迟分析",
-    content,
-    hasData: frameRates.length > 0,
+  // 第二个图表：时间戳差值分析
+  const timeDiffSeries: any[] = [];
+
+  // 按lidar分组创建不同颜色的系列
+  lidarGroups.forEach((data, lidarIndex) => {
+    const color = colors[lidarIndex % colors.length];
+    const timeDiffData = data.map((d) => {
+      return {
+        value: [timeStringToTimestamp(d.systemTime), Math.round(d.timeDiff * 1000) / 1000], // [时间戳, 时间差值]
+        originalTime: d.systemTime,
+        systemTimestamp: d.systemTimestamp,
+        pointcloudTimestamp: d.pointcloudTimestamp,
+        lidarIndex: d.lidarIndex,
+      };
+    });
+
+    timeDiffSeries.push({
+      name: `Lidar ${lidarIndex} 时间差值`,
+      type: "scatter",
+      data: timeDiffData,
+      itemStyle: {
+        color,
+        borderColor: "#ffffff",
+        borderWidth: 1,
+      },
+      symbol: "circle",
+      symbolSize: 8,
+    });
+  });
+
+  const chart2Option = {
+    title: {
+      text: "系统时间戳与点云时间戳差值分析",
+      left: "center",
+      textStyle: { fontSize: 14, fontWeight: "bold" },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross", animation: false },
+      formatter: function (params: any) {
+        // 获取第一个有效数据点的原始时间
+        let originalTime = "";
+        for (const p of params) {
+          if (p.data && p.data.originalTime) {
+            originalTime = p.data.originalTime;
+            break;
+          }
+        }
+        let res = `<div style="font-weight: bold; color: #333; margin-bottom: 8px; padding: 4px 0; border-bottom: 1px solid #eee;">🕒 系统时间: ${originalTime}</div>`;
+
+        params.forEach((p: any) => {
+          if (p.value && p.data) {
+            const data = p.data;
+            res += `<div style="margin: 8px 0; padding: 4px; background-color: rgba(0,0,0,0.05); border-radius: 4px;">`;
+            res += `<div style="font-weight: bold; color: ${p.color}; margin-bottom: 4px;">`;
+            res += `<span style="display: inline-block; width: 10px; height: 10px; background-color: ${p.color}; margin-right: 5px; border-radius: 50%; border: 1px solid #fff;"></span>`;
+            res += `📡 Lidar ${data.lidarIndex}</div>`;
+            res += `<div style="margin: 4px 0; font-size: 12px; padding-left: 15px;">📊 系统时间戳: ${data.systemTimestamp.toFixed(6)}</div>`;
+            res += `<div style="margin: 4px 0; font-size: 12px; padding-left: 15px;">📊 点云时间戳: ${data.pointcloudTimestamp.toFixed(6)}</div>`;
+            res += `<div style="margin: 4px 0; font-weight: bold; padding-left: 15px;">⏱️ 时间差值: ${data.value[1]} ms</div>`;
+            res += `</div>`;
+          }
+        });
+
+        return res;
+      },
+    },
+    legend: {
+      data: timeDiffSeries.map((s) => s.name),
+      top: 30,
+      textStyle: { fontSize: 11 },
+    },
+    grid: { left: "8%", right: "4%", bottom: "20%", top: "15%", containLabel: true },
+    xAxis: {
+      type: "time",
+      axisLabel: {
+        rotate: 45,
+        fontSize: 9,
+        formatter: (value: number) => {
+          const date = new Date(value);
+          return date.toTimeString().split(" ")[0]; // 显示 HH:MM:SS
+        },
+      },
+      min: secondsToTimestamp(timeRange.begin),
+      max: secondsToTimestamp(timeRange.end),
+    },
+    yAxis: {
+      type: "value",
+      name: "时间差值 (ms)",
+      axisLabel: { formatter: "{value} ms" },
+      splitLine: { lineStyle: { type: "dashed" } },
+    },
+    series: timeDiffSeries,
+    dataZoom: [
+      { type: "slider", xAxisIndex: 0, start: 0, end: 100, height: 20, bottom: 10 },
+      { type: "inside", xAxisIndex: 0 },
+    ],
   };
-}
 
-function analyzeLidarNanRatio(lines: string[]): AnalysisResult {
-  const nanData: Array<{ time: number; ratio: number }> = [];
-
-  for (const line of lines) {
-    const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) continue;
-
-    const time = timeStringToSeconds(timeMatch[1]);
-    const ratioMatch = line.match(/=([0-9.]+)$/);
-    if (ratioMatch) {
-      const ratio = parseFloat(ratioMatch[1]) * 100;
-      nanData.push({ time, ratio });
-    }
-  }
-
-  const avgRatio =
-    nanData.length > 0
-      ? (nanData.reduce((sum, item) => sum + item.ratio, 0) / nanData.length).toFixed(2)
-      : "0";
-  const maxRatio =
-    nanData.length > 0 ? Math.max(...nanData.map((item) => item.ratio)).toFixed(2) : "0";
-
-  const content = `
-    <div class="stats-grid">
-      <div class="stat-item ${parseFloat(maxRatio) > 70 ? "error" : ""}">
-        <div class="stat-label">最高 NAN 比率</div>
-        <div class="stat-value">${maxRatio}%</div>
+  results.push({
+    type: "mixed",
+    summary: "时间戳差值分析",
+    html: `<div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-label">平均时间差值</div>
+        <div class="stat-value">${(lidarData.reduce((sum, d) => sum + d.timeDiff, 0) / lidarData.length).toFixed(3)} ms</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">平均 NAN 比率</div>
-        <div class="stat-value">${avgRatio}%</div>
+        <div class="stat-label">最大时间差值</div>
+        <div class="stat-value">${Math.max(...lidarData.map((d) => d.timeDiff)).toFixed(3)} ms</div>
       </div>
-      <div class="stat-item">
-        <div class="stat-label">异常记录数</div>
-        <div class="stat-value">${nanData.length}</div>
-      </div>
-    </div>
-  `;
+    </div>`,
+    chart: {
+      type: "echarts",
+      option: chart2Option,
+    },
+  });
 
-  return {
-    title: "⚠️ 雷达 NAN 点比率分析",
-    content,
-    hasData: nanData.length > 0,
-  };
+  return results;
 }
 
-function analyzeWheelSpeed(lines: string[]): PluginResult {
+function analyzeWheelSpeed(lines: string[], timeRange: TimeRange): PluginResult {
   const wheelSpeedData: WheelSpeed[] = [];
 
   for (const line of lines) {
     if (line.includes("wheel_speed")) {
-      const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
+      // 尝试提取更精确的时间戳（包含毫秒）
+      let timeMatch = line.match(/(\d{2}:\d{2}:\d{2}\.\d{6})/);
       if (!timeMatch) continue;
 
       const time = timeMatch[1];
@@ -440,14 +547,23 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
     };
   }
 
-  // 生成时间轴标签
-  const timeLabels = wheelSpeedData.map((data) => data.time);
-
-  // 生成各轮速数据
-  const flData = wheelSpeedData.map((data) => Math.round(Math.abs(data.fl) * 100) / 100);
-  const frData = wheelSpeedData.map((data) => Math.round(Math.abs(data.fr) * 100) / 100);
-  const rlData = wheelSpeedData.map((data) => Math.round(Math.abs(data.rl) * 100) / 100);
-  const rrData = wheelSpeedData.map((data) => Math.round(Math.abs(data.rr) * 100) / 100);
+  // 直接使用所有数据点，以时间为x轴值，转换为时间戳，但保留原始时间字符串
+  const flData = wheelSpeedData.map((d) => ({
+    value: [timeStringToTimestamp(d.time), Math.round(d.fl * 100) / 100],
+    originalTime: d.time,
+  }));
+  const frData = wheelSpeedData.map((d) => ({
+    value: [timeStringToTimestamp(d.time), Math.round(d.fr * 100) / 100],
+    originalTime: d.time,
+  }));
+  const rlData = wheelSpeedData.map((d) => ({
+    value: [timeStringToTimestamp(d.time), Math.round(d.rl * 100) / 100],
+    originalTime: d.time,
+  }));
+  const rrData = wheelSpeedData.map((d) => ({
+    value: [timeStringToTimestamp(d.time), Math.round(d.rr * 100) / 100],
+    originalTime: d.time,
+  }));
 
   // 生成轮速图表
   const chartOption = {
@@ -466,15 +582,25 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
         animation: false,
       },
       formatter: function (params: any) {
-        let result = "时间: " + params[0].axisValue + "<br/>";
+        // 获取第一个有效数据点的原始时间
+        let originalTime = "";
+        for (const param of params) {
+          if (param.data && param.data.originalTime) {
+            originalTime = param.data.originalTime;
+            break;
+          }
+        }
+        let result = "时间: " + originalTime + "<br/>";
         params.forEach((param: any) => {
-          result += param.seriesName + ": " + param.value + " m/s<br/>";
+          if (param.value && param.value.length >= 2) {
+            result += param.seriesName + ": " + param.value[1] + " m/s<br/>";
+          }
         });
         return result;
       },
     },
     legend: {
-      data: ["前左轮", "前右轮", "后左轮", "后右轮", "平均轮速"],
+      data: ["前左轮", "前右轮", "后左轮", "后右轮"],
       top: 20,
       textStyle: {
         fontSize: 11,
@@ -488,19 +614,20 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
       containLabel: true,
     },
     xAxis: {
-      type: "category",
-      data: timeLabels,
+      type: "time",
       axisLabel: {
         rotate: 45,
         fontSize: 9,
-        interval: Math.max(1, Math.floor(timeLabels.length / 10)), // 自动调整标签间隔
-        formatter: function (value: string) {
-          return value; // 显示完整的时分秒
+        formatter: (value: number) => {
+          const date = new Date(value);
+          return date.toTimeString().split(" ")[0]; // 显示 HH:MM:SS
         },
       },
       axisTick: {
         alignWithLabel: true,
       },
+      min: secondsToTimestamp(timeRange.begin),
+      max: secondsToTimestamp(timeRange.end),
     },
     yAxis: {
       type: "value",
@@ -518,7 +645,7 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
     series: [
       {
         name: "前左轮",
-        type: "line",
+        type: "scatter",
         data: flData,
         lineStyle: {
           color: "#FF6B6B",
@@ -530,10 +657,11 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
         symbol: "circle",
         symbolSize: 3,
         smooth: false,
+        connectNulls: false,
       },
       {
         name: "前右轮",
-        type: "line",
+        type: "scatter",
         data: frData,
         lineStyle: {
           color: "#4ECDC4",
@@ -545,10 +673,11 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
         symbol: "circle",
         symbolSize: 3,
         smooth: false,
+        connectNulls: false,
       },
       {
         name: "后左轮",
-        type: "line",
+        type: "scatter",
         data: rlData,
         lineStyle: {
           color: "#45B7D1",
@@ -560,10 +689,11 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
         symbol: "circle",
         symbolSize: 3,
         smooth: false,
+        connectNulls: false,
       },
       {
         name: "后右轮",
-        type: "line",
+        type: "scatter",
         data: rrData,
         lineStyle: {
           color: "#F9CA24",
@@ -575,6 +705,7 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
         symbol: "circle",
         symbolSize: 3,
         smooth: false,
+        connectNulls: false,
       },
     ],
     dataZoom: [
@@ -614,259 +745,181 @@ function analyzeWheelSpeed(lines: string[]): PluginResult {
   };
 }
 
-function analyzeOrinRecvMpu(lines: string[]): PluginResult {
-  const byteStats: { [key: string]: number } = {};
-  const recvStats: { [key: string]: number } = {};
+function analyzeOrinRecvMpu(lines: string[], timeRange: TimeRange): PluginResult {
+  // 存储每秒的数据量汇总
+  const dataBySecond = new Map<string, number>();
+
+  // 正则表达式匹配日志格式：I[250613 16:14:24.967221][2684][raw_stream.cpp:493]read data length: 32/84
+  const logRegex = /(\d{2}:\d{2}:\d{2})\.\d+.*?read data length: (\d+)\/\d+/;
 
   for (const line of lines) {
-    const timeMatch = line.match(/(\d{2}:\d{2}:\d{2})/);
-    if (!timeMatch) continue;
+    const match = line.match(logRegex);
+    if (!match) continue;
 
-    const timeStr = timeMatch[1];
-    const byteMatch = line.match(/(\d+)\//);
+    const timeSecond = match[1]; // 提取到秒级的时间，如 "16:14:24"
+    const dataLength = parseInt(match[2]); // 提取数据长度，如 32
 
-    if (byteMatch) {
-      const bytes = parseInt(byteMatch[1]);
-
-      if (!byteStats[timeStr]) {
-        byteStats[timeStr] = 0;
-        recvStats[timeStr] = 0;
-      }
-
-      byteStats[timeStr] += bytes;
-      recvStats[timeStr] += 1;
-    }
+    // 按秒汇总数据量
+    const currentValue = dataBySecond.get(timeSecond) || 0;
+    dataBySecond.set(timeSecond, currentValue + dataLength);
   }
 
-  const totalBytes = Object.values(byteStats).reduce((a, b) => a + b, 0);
-  const totalReceives = Object.values(recvStats).reduce((a, b) => a + b, 0);
-  const avgByteRate =
-    totalBytes > 0 ? (totalBytes / Object.keys(byteStats).length).toFixed(0) : "0";
-  const normalRate = 8710;
-  const ratio = ((parseInt(avgByteRate) / normalRate) * 100).toFixed(2);
+  if (dataBySecond.size === 0) {
+    return {
+      type: "html",
+      html: '<div class="no-data">🖥️ Orin接收MPU数据分析：未找到匹配的日志行</div>',
+    };
+  }
 
-  const content = `
+  // 生成完整的秒级时间序列（基于timeRange）
+  const timeLabels: string[] = [];
+  const chartData: Array<{ value: [number, number]; originalTime: string }> = [];
+
+  for (let time = timeRange.begin; time <= timeRange.end; time++) {
+    const timeStr = formatTimeFromSeconds(time);
+    timeLabels.push(timeStr);
+
+    const dataAmount = dataBySecond.get(timeStr) || 0;
+    chartData.push({
+      value: [secondsToTimestamp(time), dataAmount],
+      originalTime: timeStr,
+    });
+  }
+
+  // 计算统计信息
+  const totalData = Array.from(dataBySecond.values()).reduce((sum, val) => sum + val, 0);
+  const nonZeroSeconds = Array.from(dataBySecond.values()).filter((val) => val > 0);
+  const avgDataPerSecond =
+    nonZeroSeconds.length > 0 ? Math.round(totalData / nonZeroSeconds.length) : 0;
+  const maxDataPerSecond = Math.max(...Array.from(dataBySecond.values()));
+  const activeSeconds = nonZeroSeconds.length;
+
+  // 生成图表配置
+  const chartOption = {
+    title: {
+      text: "Orin每秒接收MPU数据量统计",
+      left: "center",
+      textStyle: { fontSize: 14, fontWeight: "bold" },
+    },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross", animation: false },
+      formatter: function (params: any) {
+        const data = params[0];
+        const originalTime = data.data && data.data.originalTime ? data.data.originalTime : "";
+        return `<div style="font-weight: bold; color: #333; margin-bottom: 8px;">
+          🕒 时间: ${originalTime}
+        </div>
+        <div style="margin: 4px 0;">
+          📊 该秒总数据量: <span style="font-weight: bold;">${data.value[1]} bytes</span>
+        </div>
+        <div style="margin: 4px 0; font-size: 12px; color: #666;">
+          💡 该秒内所有读取操作的数据量总和
+        </div>`;
+      },
+    },
+    grid: { left: "8%", right: "4%", bottom: "20%", top: "15%", containLabel: true },
+    xAxis: {
+      type: "time",
+      axisLabel: {
+        rotate: 45,
+        fontSize: 9,
+        formatter: (value: number) => {
+          const date = new Date(value);
+          return date.toTimeString().split(" ")[0]; // 显示 HH:MM:SS
+        },
+      },
+      axisTick: { alignWithLabel: true },
+      min: secondsToTimestamp(timeRange.begin),
+      max: secondsToTimestamp(timeRange.end),
+    },
+    yAxis: {
+      type: "value",
+      name: "数据量 (bytes/秒)",
+      axisLabel: { formatter: "{value}" },
+      splitLine: { lineStyle: { type: "dashed" } },
+    },
+    series: [
+      {
+        name: "每秒数据量",
+        type: "line",
+        data: chartData,
+        itemStyle: {
+          color: "#5470C6",
+          borderColor: "#ffffff",
+          borderWidth: 1,
+        },
+        lineStyle: {
+          color: "#5470C6",
+          width: 2,
+        },
+        symbol: "circle",
+        symbolSize: 4,
+        smooth: false,
+        connectNulls: false,
+        areaStyle: {
+          color: {
+            type: "linear",
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: "rgba(84, 112, 198, 0.3)" },
+              { offset: 1, color: "rgba(84, 112, 198, 0.1)" },
+            ],
+          },
+        },
+      },
+    ],
+    dataZoom: [
+      { type: "slider", xAxisIndex: 0, start: 0, end: 100, height: 20, bottom: 10 },
+      { type: "inside", xAxisIndex: 0 },
+    ],
+  };
+
+  const html = `
     <div class="stats-grid">
       <div class="stat-item">
-        <div class="stat-label">平均接收速率</div>
-        <div class="stat-value">${avgByteRate} bytes/s</div>
+        <div class="stat-label">活跃秒数</div>
+        <div class="stat-value">${activeSeconds}</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">正常率</div>
-        <div class="stat-value">${ratio}%</div>
-      </div>
-      <div class="stat-item ${parseFloat(ratio) < 95 ? "warning" : ""}">
-        <div class="stat-label">标准速率</div>
-        <div class="stat-value">${normalRate} bytes/s</div>
+        <div class="stat-label">总数据量</div>
+        <div class="stat-value">${totalData.toLocaleString()} bytes</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">总接收次数</div>
-        <div class="stat-value">${totalReceives}</div>
+        <div class="stat-label">平均每秒</div>
+        <div class="stat-value">${avgDataPerSecond.toLocaleString()} bytes</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">最大每秒</div>
+        <div class="stat-value">${maxDataPerSecond.toLocaleString()} bytes</div>
       </div>
     </div>
   `;
 
   return {
-    title: "🖥️ Orin 接收 MPU 数据分析",
-    content,
-    hasData: totalReceives > 0,
+    type: "mixed",
+    summary: "Orin每秒接收MPU数据分析",
+    html: html,
+    chart: {
+      type: "echarts",
+      option: chartOption,
+    },
   };
 }
 
-function buildAnalysisReport(
-  results: AnalysisResult[],
-  timeRange: TimeRange,
-  totalLines: number
-): string {
-  let html = `
-    <div class="gnss-lidar-analysis">
-      <div class="analysis-header">
-        <h3>📊 GNSS雷达轮速数据分析报告</h3>
-        <div class="analysis-info">
-          <div class="info-item">
-            <span class="info-label">分析时间范围：</span>
-            <span class="info-value">${formatTime(timeRange.begin)} ~ ${formatTime(timeRange.end)}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">总日志行数：</span>
-            <span class="info-value">${totalLines.toLocaleString()}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">分析模块：</span>
-            <span class="info-value">${results.filter((r) => r.hasData).length} 个</span>
-          </div>
-        </div>
-      </div>
-  `;
-
-  if (results.length > 0) {
-    for (const result of results) {
-      if (result.hasData) {
-        html += `
-          <div class="analysis-section">
-            <h4 class="section-title">${result.title}</h4>
-            <div class="section-content">${result.content}</div>
-          </div>
-        `;
-      }
-    }
-  } else {
-    html += `
-      <div class="no-data">
-        <div class="no-data-icon">📋</div>
-        <div class="no-data-text">未检测到相关的日志数据</div>
-        <div class="no-data-hint">请确保日志包含GNSS、雷达或轮速相关信息</div>
-      </div>
-    `;
-  }
-
-  html += "</div>";
-  return html;
-}
-
-function generateSummary(results: AnalysisResult[]): string {
-  const validResults = results.filter((r) => r.hasData);
-
-  if (validResults.length === 0) {
-    return "❌ 未检测到有效的GNSS/雷达/轮速数据";
-  }
-
-  const moduleNames = validResults.map((r) => r.title.replace(/[🛰️📡📉⚠️🚗🖥️]/g, "").trim());
-
-  return `✅ 成功分析 ${validResults.length} 个模块：${moduleNames.join("、")}`;
-}
-
-function generateComprehensiveChart(logs: LogCategory, timeRange: TimeRange): any {
-  // 生成时间轴（每分钟采样）
-  const timeAxis = [];
-  for (let t = timeRange.begin; t <= timeRange.end; t += 60) {
-    timeAxis.push(formatTime(t));
-  }
-
-  if (timeAxis.length === 0) {
-    return null;
-  }
-
-  // 模拟数据生成（实际项目中应该根据真实数据生成）
-  const gnssData = new Array(timeAxis.length).fill(0).map(() => Math.random() * 10);
-  const lidarFpsData = new Array(timeAxis.length).fill(0).map(() => 40 + Math.random() * 20);
-  const wheelSpeedData = new Array(timeAxis.length).fill(0).map(() => Math.random() * 15);
-
-  const option = {
-    title: {
-      text: "GNSS雷达轮速综合分析图表",
-      left: "center",
-      textStyle: {
-        fontSize: 16,
-        fontWeight: "bold",
-      },
-    },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: {
-        type: "cross",
-        animation: false,
-      },
-      formatter: function (params: any) {
-        let result = `时间: ${params[0].axisValue}<br/>`;
-        params.forEach((param: any) => {
-          result += `${param.seriesName}: ${param.value}<br/>`;
-        });
-        return result;
-      },
-    },
-    legend: {
-      data: ["GNSS状态指标", "雷达FPS", "轮速"],
-      top: 35,
-      textStyle: {
-        fontSize: 12,
-      },
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "15%",
-      top: "15%",
-      containLabel: true,
-    },
-    xAxis: {
-      type: "category",
-      data: timeAxis,
-      axisLabel: {
-        rotate: 45,
-        fontSize: 10,
-      },
-    },
-    yAxis: [
-      {
-        type: "value",
-        name: "状态/FPS",
-        position: "left",
-        axisLabel: {
-          fontSize: 10,
-        },
-      },
-      {
-        type: "value",
-        name: "速度 (m/s)",
-        position: "right",
-        axisLabel: {
-          fontSize: 10,
-        },
-      },
-    ],
-    series: [
-      {
-        name: "GNSS状态指标",
-        type: "line",
-        data: gnssData,
-        smooth: true,
-        lineStyle: {
-          color: "#5470c6",
-          width: 2,
-        },
-        itemStyle: {
-          color: "#5470c6",
-        },
-      },
-      {
-        name: "雷达FPS",
-        type: "line",
-        data: lidarFpsData,
-        smooth: true,
-        lineStyle: {
-          color: "#91cc75",
-          width: 2,
-        },
-        itemStyle: {
-          color: "#91cc75",
-        },
-      },
-      {
-        name: "轮速",
-        type: "line",
-        yAxisIndex: 1,
-        data: wheelSpeedData,
-        smooth: true,
-        lineStyle: {
-          color: "#fac858",
-          width: 2,
-        },
-        itemStyle: {
-          color: "#fac858",
-        },
-      },
-    ],
-    dataZoom: [
-      {
-        type: "slider",
-        xAxisIndex: 0,
-        filterMode: "none",
-      },
-    ],
-  };
-
-  return option;
+// 添加辅助函数：将秒数转换为时分秒字符串
+function formatTimeFromSeconds(seconds: number): string {
+  const hours = Math.floor(seconds / 3600)
+    .toString()
+    .padStart(2, "0");
+  const mins = Math.floor((seconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const secs = (seconds % 60).toString().padStart(2, "0");
+  return `${hours}:${mins}:${secs}`;
 }
 
 export default plugin;

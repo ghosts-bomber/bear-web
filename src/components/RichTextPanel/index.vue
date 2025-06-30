@@ -15,13 +15,6 @@ import { ref, nextTick, onMounted, onBeforeUnmount } from "vue";
 import * as echarts from "echarts";
 import type { PluginResult } from "@/types/plugin";
 
-const props = defineProps({
-  editorRef: {
-    type: Object,
-    required: true,
-  },
-});
-
 const content = ref("");
 const richTextPanelRef = ref<HTMLElement | null>(null);
 
@@ -144,7 +137,10 @@ const renderChart = async (chartId: string, chartOption: any) => {
 };
 
 // 处理插件结果
-const handlePluginResult = async (pluginName: string, result: string | PluginResult) => {
+const handlePluginResult = async (
+  pluginName: string,
+  result: string | PluginResult | PluginResult[]
+) => {
   const timestamp = new Date().toLocaleTimeString();
 
   if (typeof result === "string") {
@@ -154,58 +150,87 @@ const handlePluginResult = async (pluginName: string, result: string | PluginRes
       <span class="action">✅ ${pluginName} 处理完成：</span>
       <div class="plugin-output">${result}</div>
     </div>`;
+  } else if (Array.isArray(result)) {
+    // PluginResult数组，按顺序处理每个结果
+    let allHtml = "";
+    for (let i = 0; i < result.length; i++) {
+      const singleResult = result[i];
+      const resultHtml = await handleSinglePluginResult(
+        pluginName,
+        singleResult,
+        timestamp,
+        i + 1,
+        result.length
+      );
+      allHtml += resultHtml;
+    }
+    return allHtml;
   } else {
-    // 新的PluginResult格式
-    const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    let html = `<div class="action-item plugin-result">
-      <span class="time">[${timestamp}]</span>
-      <span class="action">✅ ${pluginName} 处理完成：</span>
-      <div class="plugin-output">`;
-
-    // 添加摘要信息
-    if (result.summary) {
-      html += `<div class="plugin-summary" style="margin-bottom: 15px; padding: 10px; background: #f0f9ff; border-left: 4px solid #0ea5e9; border-radius: 4px;">
-        ${result.summary}
-      </div>`;
-    }
-
-    // 添加HTML内容
-    if (result.html) {
-      html += result.html;
-    }
-
-    // 添加图表容器
-    if (result.chart && result.chart.type === "echarts") {
-      console.log(`Adding echarts-chart with ID: ${chartId}`);
-      html += `
-        <div class="echarts-container" style="margin: 20px 0;">
-          <div class="chart-header" style="margin-bottom: 10px; font-weight: bold; color: #333;">
-            📊 数据可视化图表
-          </div>
-          <div id="${chartId}" class="echarts-chart" style="width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 6px; background: #fff;">
-            <div style="padding: 60px; text-align: center; color: #666;">
-              <div style="font-size: 18px;">📊</div>
-              <div style="margin-top: 10px;">正在加载图表...</div>
-            </div>
-          </div>
-        </div>`;
-
-      // 使用队列机制渲染图表
-      queueChartRender(chartId, result.chart!.option);
-
-      // 为这个特定图表添加独立的渲染尝试
-      setTimeout(async () => {
-        console.log(`Independent render attempt for ${chartId}`);
-        if (!chartInstances.has(chartId)) {
-          await renderChart(chartId, result.chart!.option);
-        }
-      }, 500);
-    }
-
-    html += `</div></div>`;
-    return html;
+    // 单个PluginResult对象
+    return await handleSinglePluginResult(pluginName, result, timestamp);
   }
+};
+
+// 处理单个PluginResult
+const handleSinglePluginResult = async (
+  pluginName: string,
+  result: PluginResult,
+  timestamp: string,
+  index?: number,
+  total?: number
+) => {
+  const chartId = `chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  // 如果是数组结果，添加序号显示
+  const titleSuffix = index && total ? ` (${index}/${total})` : "";
+
+  let html = `<div class="action-item plugin-result">
+    <span class="time">[${timestamp}]</span>
+    <span class="action">✅ ${pluginName}${titleSuffix} 处理完成：</span>
+    <div class="plugin-output">`;
+
+  // 添加摘要信息
+  if (result.summary) {
+    html += `<div class="plugin-summary" style="margin-bottom: 15px; padding: 10px; background: #f0f9ff; border-left: 4px solid #0ea5e9; border-radius: 4px;">
+      ${result.summary}
+    </div>`;
+  }
+
+  // 添加HTML内容
+  if (result.html) {
+    html += result.html;
+  }
+
+  // 添加图表容器
+  if (result.chart && result.chart.type === "echarts") {
+    console.log(`Adding echarts-chart with ID: ${chartId}`);
+    html += `
+      <div class="echarts-container" style="margin: 20px 0;">
+        <div class="chart-header" style="margin-bottom: 10px; font-weight: bold; color: #333;">
+          📊 数据可视化图表${titleSuffix}
+        </div>
+        <div id="${chartId}" class="echarts-chart" style="width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 6px; background: #fff;">
+          <div style="padding: 60px; text-align: center; color: #666;">
+            <div style="font-size: 18px;">📊</div>
+            <div style="margin-top: 10px;">正在加载图表...</div>
+          </div>
+        </div>
+      </div>`;
+
+    // 使用队列机制渲染图表
+    queueChartRender(chartId, result.chart!.option);
+
+    // 为这个特定图表添加独立的渲染尝试
+    setTimeout(async () => {
+      console.log(`Independent render attempt for ${chartId}`);
+      if (!chartInstances.has(chartId)) {
+        await renderChart(chartId, result.chart!.option);
+      }
+    }, 500);
+  }
+
+  html += `</div></div>`;
+  return html;
 };
 
 // 处理来自 Monaco Editor 的操作信号
@@ -215,7 +240,7 @@ const handleEditorAction = async (action: {
   value?: string;
   pluginName?: string;
   pluginId?: string;
-  result?: string | PluginResult;
+  result?: string | PluginResult | PluginResult[];
 }) => {
   const timestamp = new Date().toLocaleTimeString();
   let actionContent = "";
@@ -260,13 +285,15 @@ const handleEditorAction = async (action: {
     await reRenderAllChartsAfterContentUpdate();
 
     // 处理新增的图表
-    if (
-      action.action === "plugin-result" &&
-      action.result &&
-      typeof action.result === "object" &&
-      action.result.chart
-    ) {
-      await processChartQueue();
+    if (action.action === "plugin-result" && action.result && typeof action.result === "object") {
+      // 检查是否有图表需要渲染
+      const hasChart = Array.isArray(action.result)
+        ? action.result.some((r) => r.chart)
+        : action.result.chart;
+
+      if (hasChart) {
+        await processChartQueue();
+      }
     }
   }, 100);
 
