@@ -1,7 +1,7 @@
 import type { Plugin } from "@/types/plugin";
 import upgradeDetectorPlugin from "./upgrade-detector";
 import stackTraceDetectorPlugin from "./stack-trace-detector";
-import cpuUsageAnalyzerPlugin from "./cpu-usage-analyzer";
+import cpuUsageAnalyzerPlugin from "./cpu-log-usage-analyzer";
 import memoryUsageAnalyzerPlugin from "./memory-usage-analyzer";
 import gnssLidarWheelAnalysisPlugin from "./gnss-lidar-wheel-analysis";
 import cameraFrameRateAnalysisPlugin from "./camera-frame-rate-analysis";
