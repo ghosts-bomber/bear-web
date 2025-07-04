@@ -28,6 +28,10 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  fileName: {
+    type: String,
+    default: "",
+  },
 });
 
 const emit = defineEmits(["context-menu-action"]);
@@ -84,7 +88,7 @@ const addPluginContextMenuActions = () => {
             text: `正在使用 ${plugin.name} 处理内容...`,
           });
 
-          const result = await plugin.process(content);
+          const result = await plugin.process(content, { fileName: props.fileName });
           emit("context-menu-action", {
             action: "plugin-result",
             result: result,

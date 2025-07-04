@@ -16,19 +16,18 @@
               </el-icon>
             </div>
             <h1 class="brand-title">AIP/GC 分析平台</h1>
-            <p class="brand-subtitle">智能问题诊断 · 故障快速定位</p>
             <div class="feature-list">
               <div class="feature-item">
                 <el-icon size="16" color="#67C23A"><CircleCheck /></el-icon>
-                <span>实时监控分析</span>
+                <span>不智能</span>
               </div>
               <div class="feature-item">
                 <el-icon size="16" color="#67C23A"><CircleCheck /></el-icon>
-                <span>智能故障诊断</span>
+                <span>还很慢</span>
               </div>
               <div class="feature-item">
                 <el-icon size="16" color="#67C23A"><CircleCheck /></el-icon>
-                <span>快速问题定位</span>
+                <span>在进步</span>
               </div>
             </div>
           </div>
@@ -99,7 +98,7 @@
             <div class="form-footer">
               <p class="footer-text">
                 <el-icon size="14" color="#909399"><InfoFilled /></el-icon>
-                首次登录请联系管理员获取账户信息
+                登录您的中台账户
               </p>
             </div>
           </div>

@@ -5,6 +5,7 @@ import cpuUsageAnalyzerPlugin from "./cpu-log-usage-analyzer";
 import memoryUsageAnalyzerPlugin from "./memory-usage-analyzer";
 import gnssLidarWheelAnalysisPlugin from "./gnss-lidar-wheel-analysis";
 import cameraFrameRateAnalysisPlugin from "./camera-frame-rate-analysis";
+import textExportPlugin from "./text-export";
 // 导出所有插件
 export const plugins: Plugin[] = [
   upgradeDetectorPlugin,
@@ -13,6 +14,7 @@ export const plugins: Plugin[] = [
   memoryUsageAnalyzerPlugin,
   gnssLidarWheelAnalysisPlugin,
   cameraFrameRateAnalysisPlugin,
+  textExportPlugin,
 ];
 
 // 插件加载器

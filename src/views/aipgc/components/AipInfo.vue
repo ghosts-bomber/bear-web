@@ -1,5 +1,14 @@
 <template>
   <div class="aip-info-container">
+    <el-button
+      class="open-root-btn"
+      type="primary"
+      size="small"
+      style="position: absolute; top: 16px; left: 16px; z-index: 100"
+      @click="openRootPage"
+    >
+      打开首页
+    </el-button>
     <div class="left-panel" :style="{ width: leftPanelWidth + 'px' }">
       <el-form label-position="right" label-width="auto" style="max-width: 600px">
         <el-form-item label="aip" label-position="right">
@@ -84,7 +93,7 @@
             </div>
           </template>
           <div class="tab-content">
-            <LogViewer :content="tab.content" />
+            <LogViewer :content="tab.content" :file-name="tab.fullName" />
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -100,6 +109,7 @@ import { useAipStore } from "@/store";
 import pako from "pako";
 import Tar from "parse-tar";
 import { Document, DocumentCopy } from "@element-plus/icons-vue";
+import { onMounted, watch } from "vue";
 
 interface AipInfo {
   carCyberRtVersion?: string;
@@ -306,31 +316,44 @@ const logDbClickedHandle = async (row: any, column: any, event: Event) => {
     if (url_match !== null) {
       await PTApi.downloadFile(url_match[1]).then(async (response: AxiosResponse) => {
         try {
-          // 解压 gzip 数据
-          const inflatedData = pako.inflate(new Uint8Array(response.data));
-          // 创建解压后的 Blob
-          const tarBuffer = new Blob([inflatedData], { type: "application/x-tar" });
-          // 将 Blob 转换为 ArrayBuffer
-          const arrayBuffer = await tarBuffer.arrayBuffer();
-          // 解析 tar 文件
-          const files = await Tar(arrayBuffer);
-          console.log("Extracted files:", files);
+          if (!logFile.cut) {
+            // 解压 gzip 数据
+            const inflatedData = pako.inflate(new Uint8Array(response.data));
+            // 创建解压后的 Blob
+            const tarBuffer = new Blob([inflatedData], { type: "application/x-tar" });
+            // 将 Blob 转换为 ArrayBuffer
+            const arrayBuffer = await tarBuffer.arrayBuffer();
+            // 解析 tar 文件
+            const files = await Tar(arrayBuffer);
+            console.log("Extracted files:", files);
 
-          if (files && files.length > 0) {
-            const file = files[files.length - 1];
-            // 获取文件的实际内容
-            const fileContent = await file.contents;
-            // 使用 TextDecoder 解码文件内容
-            const decoder = new TextDecoder();
-            const content = decoder.decode(fileContent);
+            if (files && files.length > 0) {
+              const file = files[files.length - 1];
+              // 获取文件的实际内容
+              const fileContent = await file.contents;
+              // 使用 TextDecoder 解码文件内容
+              const decoder = new TextDecoder();
+              const content = decoder.decode(fileContent);
 
-            // 添加到Tab中
+              // 添加到Tab中
+              addTab(logFile, content);
+            }
+          } else {
+            let content = "";
+            if (response.data instanceof ArrayBuffer) {
+              content = new TextDecoder().decode(new Uint8Array(response.data));
+            } else if (response.data instanceof Uint8Array) {
+              content = new TextDecoder().decode(response.data);
+            } else if (typeof response.data === "string") {
+              content = response.data;
+            } else {
+              content = String(response.data);
+            }
             addTab(logFile, content);
-
-            // 关闭加载提示，显示成功消息
-            loadingMessage.close();
-            ElMessage.success(`${logFile.name} 加载完成`);
           }
+          // 关闭加载提示，显示成功消息
+          loadingMessage.close();
+          ElMessage.success(`${logFile.name} 加载完成`);
         } catch (error) {
           console.error("Error processing tar.gz file:", error);
           loadingMessage.close();
@@ -371,7 +394,16 @@ onMounted(() => {
 
   // 添加键盘事件监听
   document.addEventListener("keydown", handleKeydown);
+
+  document.title = props.code;
 });
+
+watch(
+  () => props.code,
+  (newCode) => {
+    document.title = newCode;
+  }
+);
 
 // 清理事件监听器
 onBeforeUnmount(() => {
@@ -503,6 +535,10 @@ const isTimeInRange = (fileName: string): boolean => {
 // 获取行的CSS类名
 const getRowClassName = ({ row }: { row: LogFile }): string => {
   return isTimeInRange(row.name) ? "highlight-row" : "";
+};
+
+const openRootPage = () => {
+  window.open("/", "_blank");
 };
 </script>
 
@@ -928,5 +964,23 @@ const getRowClassName = ({ row }: { row: LogFile }): string => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* 最左上角透明按钮样式 */
+.open-root-btn {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 6px 12px;
+  color: #409eff !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  transition: background 0.2s;
+}
+
+.open-root-btn:hover {
+  background: rgb(64 158 255 / 8%) !important;
 }
 </style>

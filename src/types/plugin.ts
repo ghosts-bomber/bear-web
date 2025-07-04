@@ -11,11 +11,18 @@ export interface PluginResult {
   summary?: string;
 }
 
+export interface PluginContext {
+  fileName?: string;
+}
+
 export interface Plugin {
   id: string;
   name: string;
   description: string;
-  process: (content: string) => Promise<string | PluginResult | PluginResult[]>;
+  process: (
+    content: string,
+    context?: PluginContext
+  ) => Promise<string | PluginResult | PluginResult[]>;
 }
 
 export interface PluginAction {

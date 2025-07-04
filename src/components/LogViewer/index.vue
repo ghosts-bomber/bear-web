@@ -6,6 +6,7 @@
           ref="monacoEditorRef"
           :value="editorContent"
           :options="editorOptions"
+          :file-name="props.fileName"
           @context-menu-action="handleContextMenuAction"
         />
       </div>
@@ -69,6 +70,7 @@ import { ChatDotSquare, Close, Delete } from "@element-plus/icons-vue";
 
 interface Props {
   content: string;
+  fileName?: string;
 }
 
 const props = defineProps<Props>();
